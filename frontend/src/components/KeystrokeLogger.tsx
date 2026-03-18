@@ -1,6 +1,8 @@
 import React, { useEffect, useRef, useState } from 'react';
-import Editor, { Monaco } from '@monaco-editor/react';
+import Editor from '@monaco-editor/react';
 import api from '../api';
+
+type Monaco = any;
 
 interface KeystrokeEvent {
   key: string;
@@ -14,14 +16,16 @@ interface KeystrokeEvent {
 interface KeystrokeLoggerProps {
   sessionId: string;
   taskId: number;
+  onKeystrokeChange?: (count: number) => void;
 }
 
 const BATCH_TIME_MS = 2000;
 const BATCH_SIZE = 50;
 
-const KeystrokeLogger: React.FC<KeystrokeLoggerProps> = ({ sessionId, taskId }) => {
-  const [code, setCode] = useState('// Start typing your solution here...');
+const KeystrokeLogger: React.FC<KeystrokeLoggerProps> = ({ sessionId, taskId, onKeystrokeChange }) => {
+  const [code, setCode] = useState('# Start typing your solution here...');
   const eventBuffer = useRef<KeystrokeEvent[]>([]);
+  const keystrokeCount = useRef<number>(0);
   const editorRef = useRef<any>(null);
   const monacoRef = useRef<Monaco | null>(null);
 
@@ -38,7 +42,6 @@ const KeystrokeLogger: React.FC<KeystrokeLoggerProps> = ({ sessionId, taskId }) 
       });
     } catch (error) {
       console.error('Failed to upload keystrokes:', error);
-      // Re-add to buffer if failed? For now, just log.
       eventBuffer.current = [...eventsToUpload, ...eventBuffer.current];
     }
   };
@@ -58,7 +61,6 @@ const KeystrokeLogger: React.FC<KeystrokeLoggerProps> = ({ sessionId, taskId }) 
     editorRef.current = editor;
     monacoRef.current = monaco;
 
-    // Prevent copy-paste
     editor.onKeyDown((e: any) => {
       if ((e.ctrlKey || e.metaKey) && (e.keyCode === monaco.KeyCode.KeyC || e.keyCode === monaco.KeyCode.KeyV)) {
         e.preventDefault();
@@ -66,7 +68,6 @@ const KeystrokeLogger: React.FC<KeystrokeLoggerProps> = ({ sessionId, taskId }) 
       }
     });
 
-    // Capture keystrokes
     const logEvent = (e: any, type: string) => {
       const position = editor.getPosition();
       const model = editor.getModel();
@@ -84,6 +85,13 @@ const KeystrokeLogger: React.FC<KeystrokeLoggerProps> = ({ sessionId, taskId }) 
 
       eventBuffer.current.push(event);
 
+      if (type === 'keydown') {
+        keystrokeCount.current += 1;
+        if (onKeystrokeChange) {
+          onKeystrokeChange(keystrokeCount.current);
+        }
+      }
+
       if (eventBuffer.current.length >= BATCH_SIZE) {
         flushBuffer();
       }
@@ -94,7 +102,7 @@ const KeystrokeLogger: React.FC<KeystrokeLoggerProps> = ({ sessionId, taskId }) 
   };
 
   return (
-    <div className="keystroke-logger-container" style={{ border: '1px solid #ccc', borderRadius: '4px', overflow: 'hidden' }}>
+    <div className="keystroke-logger-container">
       <Editor
         height="60vh"
         defaultLanguage="python"
@@ -107,14 +115,13 @@ const KeystrokeLogger: React.FC<KeystrokeLoggerProps> = ({ sessionId, taskId }) 
           fontSize: 14,
           scrollBeyondLastLine: false,
           automaticLayout: true,
-          // Strict anti-bias measures
           wordBasedSuggestions: 'off',
           suggestOnTriggerCharacters: false,
           parameterHints: { enabled: false },
           quickSuggestions: false,
           snippetSuggestions: 'none',
-          contextmenu: false, // Disable right-click context menu
-          dragAndDrop: false, // Disable drag and drop
+          contextmenu: false,
+          dragAndDrop: false,
         }}
       />
     </div>
