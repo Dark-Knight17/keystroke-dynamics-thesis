@@ -34,7 +34,7 @@ def seed_tasks():
         "task_title": "[Day 1] Debugging: Infinite Loop",
         "description": "Type the CORRECTED version of this code. Fix the infinite loop and indentation errors:\n\ndef print_numbers(max_val):\ncount = 0\n  while count < max_val\n    print(count)\n     count - 1",
         "difficulty_level": "Medium",
-        "expected_solution_length": 150
+        "expected_solution_length": 90
       },
       {
         "task_title": "[Day 2] Transcription: API Request",
@@ -58,7 +58,7 @@ def seed_tasks():
         "task_title": "[Day 2] Debugging: Broken Logic",
         "description": "Type the CORRECTED version. Fix the missing colons, typos, and `elif` structure:\n\ndef check_status(status)\n    if status == 'ACTIVE'\n        return 1\n    else if status == 'PENDING':\n        return 0\n    else\n        return -1",
         "difficulty_level": "Medium",
-        "expected_solution_length": 150
+        "expected_solution_length": 110
       },
       {
         "task_title": "[Day 3] Transcription: Dictionary Grouping",
@@ -76,13 +76,13 @@ def seed_tasks():
         "task_title": "[Day 3] Syntax: Try/Except File I/O",
         "description": "Write a `try...except` block that attempts to open a file named 'data.txt' in read mode ('r'). In the `except FileNotFoundError` block, print the error message using an f-string.",
         "difficulty_level": "Easy",
-        "expected_solution_length": 150
+        "expected_solution_length": 100
       },
       {
         "task_title": "[Day 3] Debugging: OOP Inheritance",
         "description": "Type the CORRECTED version. Fix the class inheritance and `super()` call:\n\nclass Admin(User):\n    def __init__(self, name, role):\n        super().init(name)\n        self.role = role\n\n    def get_role():\n        return self.role",
         "difficulty_level": "Medium",
-        "expected_solution_length": 150
+        "expected_solution_length": 110
       }
     ]
 
