@@ -2,12 +2,14 @@ import React, { useState, useEffect } from 'react';
 import api from './api';
 import Auth from './components/Auth';
 import KeystrokeLogger from './components/KeystrokeLogger';
+import './App.css';
 
 interface Task {
   task_id: number;
   task_title: string;
   description: string;
   difficulty_level: string;
+  expected_solution_length: number;
 }
 
 const App: React.FC = () => {
@@ -15,38 +17,35 @@ const App: React.FC = () => {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
   const [sessionId, setSessionId] = useState<string | null>(null);
+  const [keystrokeCount, setKeystrokeCount] = useState(0);
 
   useEffect(() => {
-    // Seed tasks if they don't exist in backend (simplified)
-    // In production, we'd fetch them
-    setTasks([
-      {
-        task_id: 1,
-        task_title: 'Fibonacci Sequence',
-        description: 'Write a function that returns the n-th Fibonacci number.',
-        difficulty_level: 'Easy',
-      },
-      {
-        task_id: 2,
-        task_title: 'String Reversal',
-        description: 'Implement a function that reverses a string.',
-        difficulty_level: 'Easy',
-      },
-    ]);
-  }, []);
+    const fetchTasks = async () => {
+      try {
+        const response = await api.get('/tasks');
+        setTasks(response.data);
+      } catch (err) {
+        console.error('Failed to fetch tasks:', err);
+      }
+    };
+    if (userId) {
+      fetchTasks();
+    }
+  }, [userId]);
 
   const handleStartSession = async (task: Task) => {
     try {
       const response = await api.post('/session/start', {
         task_id: task.task_id,
         device_type: navigator.userAgent,
-        keyboard_layout: 'Standard QWERTY', // Simplified
+        keyboard_layout: 'Standard QWERTY',
         os: navigator.platform,
       }, {
         params: { user_id: userId },
       });
       setSessionId(response.data.session_id);
       setSelectedTask(task);
+      setKeystrokeCount(0);
     } catch (err) {
       console.error('Failed to start session:', err);
       alert('Could not start session. Please try again.');
@@ -59,6 +58,7 @@ const App: React.FC = () => {
       await api.post(`/session/end/${sessionId}`);
       setSessionId(null);
       setSelectedTask(null);
+      setKeystrokeCount(0);
       alert('Session ended successfully. Thank you!');
     } catch (err) {
       console.error('Failed to end session:', err);
@@ -67,7 +67,7 @@ const App: React.FC = () => {
 
   if (!userId) {
     return (
-      <div className="App" style={{ fontFamily: 'sans-serif', padding: '2rem' }}>
+      <div className="App">
         <h1 style={{ textAlign: 'center' }}>Keystroke Dynamics Platform</h1>
         <Auth onLogin={(id) => setUserId(id)} />
       </div>
@@ -75,47 +75,83 @@ const App: React.FC = () => {
   }
 
   if (sessionId && selectedTask) {
+    const isThresholdMet = keystrokeCount >= selectedTask.expected_solution_length;
+    
     return (
-      <div className="App" style={{ fontFamily: 'sans-serif', padding: '2rem' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+      <div className="App">
+        <div className="task-header">
           <div>
             <h2>{selectedTask.task_title}</h2>
-            <p>{selectedTask.description}</p>
+            <p style={{ whiteSpace: 'pre-wrap' }}>{selectedTask.description}</p>
           </div>
-          <button
-            onClick={handleEndSession}
-            style={{ padding: '0.75rem 1.5rem', background: '#dc3545', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' }}
-          >
-            End Session
-          </button>
+          <div style={{ textAlign: 'right' }}>
+            <p style={{ fontWeight: 'bold', color: isThresholdMet ? '#4CAF50' : '#f44336' }}>
+              Keystrokes: {keystrokeCount} / {selectedTask.expected_solution_length} required
+            </p>
+            <button 
+              onClick={handleEndSession} 
+              className={`btn ${isThresholdMet ? 'btn-danger' : 'btn-secondary'}`}
+              disabled={!isThresholdMet}
+              title={!isThresholdMet ? `Minimum ${selectedTask.expected_solution_length} keystrokes required` : ''}
+            >
+              End Session
+            </button>
+          </div>
         </div>
-        <KeystrokeLogger sessionId={sessionId} taskId={selectedTask.task_id} />
+        <KeystrokeLogger 
+          sessionId={sessionId} 
+          taskId={selectedTask.task_id} 
+          onKeystrokeChange={(count) => setKeystrokeCount(count)}
+        />
       </div>
     );
   }
 
+  const groupedTasks = tasks.reduce((acc, task) => {
+    const dayMatch = task.task_title.match(/\[Day (\d)\]/);
+    const day = dayMatch ? `Day ${dayMatch[1]}` : 'Other';
+    if (!acc[day]) acc[day] = [];
+    acc[day].push(task);
+    return acc;
+  }, {} as Record<string, Task[]>);
+
+  const days = ['Day 1', 'Day 2', 'Day 3'];
+
   return (
-    <div className="App" style={{ fontFamily: 'sans-serif', padding: '2rem' }}>
-      <h1>Welcome Participant</h1>
-      <p>Select a task to begin your typing session.</p>
-      <div className="task-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '1rem', marginTop: '2rem' }}>
-        {tasks.map((task) => (
-          <div key={task.task_id} style={{ border: '1px solid #ddd', padding: '1.5rem', borderRadius: '8px', background: '#fcfcfc' }}>
-            <h3>{task.task_title}</h3>
-            <p style={{ color: '#666' }}>{task.description}</p>
-            <p><strong>Difficulty:</strong> {task.difficulty_level}</p>
-            <button
-              onClick={() => handleStartSession(task)}
-              style={{ padding: '0.5rem 1rem', background: '#28a745', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', marginTop: '1rem' }}
-            >
-              Start Session
-            </button>
+    <div className="App">
+      <h1>Research Participant Dashboard</h1>
+      <p>Please complete the tasks assigned for each day in order.</p>
+      
+      <div className="day-columns" style={{ display: 'flex', gap: '2rem', marginTop: '2rem' }}>
+        {days.map(day => (
+          <div key={day} className="day-column" style={{ flex: 1 }}>
+            <h2 style={{ borderBottom: '2px solid #333', paddingBottom: '0.5rem' }}>{day}</h2>
+            <div className="task-list">
+              {(groupedTasks[day] || []).map((task) => (
+                <div key={task.task_id} className="task-card" style={{ marginBottom: '1rem', border: '1px solid #ddd', padding: '1rem', borderRadius: '8px' }}>
+                  <h3 style={{ marginTop: 0, fontSize: '1.1rem' }}>{task.task_title.replace(/\[Day \d\] /, '')}</h3>
+                  <p style={{ fontSize: '0.9rem', color: '#666' }}><strong>Difficulty:</strong> {task.difficulty_level}</p>
+                  <button
+                    onClick={() => handleStartSession(task)}
+                    className="btn btn-success"
+                    style={{ width: '100%', marginTop: '0.5rem' }}
+                  >
+                    Start Task
+                  </button>
+                </div>
+              ))}
+              {(!groupedTasks[day] || groupedTasks[day].length === 0) && (
+                <p style={{ color: '#999', fontStyle: 'italic' }}>No tasks assigned.</p>
+              )}
+            </div>
           </div>
         ))}
       </div>
+
       <button
         onClick={() => setUserId(null)}
-        style={{ marginTop: '2rem', background: 'none', border: 'none', color: '#dc3545', textDecoration: 'underline', cursor: 'pointer' }}
+        className="btn btn-link"
+        style={{ marginTop: '2rem' }}
       >
         Logout
       </button>
