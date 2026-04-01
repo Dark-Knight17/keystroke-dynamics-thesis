@@ -9,6 +9,7 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
   const [isRegistering, setIsRegistering] = useState(false);
   const [matricNumber, setMatricNumber] = useState('');
   const [password, setPassword] = useState('');
+  const [physicalKeyboardType, setPhysicalKeyboardType] = useState('');
   const [error, setError] = useState('');
   const [consented, setConsented] = useState(false);
 
@@ -21,11 +22,17 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
       return;
     }
 
+    if (isRegistering && !physicalKeyboardType) {
+      setError('Please select your keyboard type.');
+      return;
+    }
+
     try {
       if (isRegistering) {
-        const response = await api.post('/register', {
+        await api.post('/register', {
           matric_number: matricNumber,
           password: password,
+          physical_keyboard_type: physicalKeyboardType,
         });
         setIsRegistering(false);
         alert('Registration successful! Please login.');
@@ -42,15 +49,16 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
   };
 
   return (
-    <div className="auth-container" style={{ maxWidth: '400px', margin: 'auto', padding: '2rem' }}>
+    <div className="auth-container">
       <h2>{isRegistering ? 'Register Participant' : 'Login'}</h2>
-      <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+      <form onSubmit={handleSubmit} className="auth-form">
         <input
           type="text"
           placeholder="Matriculation Number"
           value={matricNumber}
           onChange={(e) => setMatricNumber(e.target.value)}
           required
+          className="auth-input"
         />
         <input
           type="password"
@@ -58,27 +66,42 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
           value={password}
           onChange={(e) => setPassword(e.target.value)}
           required
+          className="auth-input"
         />
+
+        {isRegistering && (
+          <select
+            value={physicalKeyboardType}
+            onChange={(e) => setPhysicalKeyboardType(e.target.value)}
+            required
+            className="auth-input"
+          >
+            <option value="" disabled>Select your keyboard type...</option>
+            <option value="Built-in Laptop Keyboard">Built-in Laptop Keyboard</option>
+            <option value="External Standard (Membrane) Keyboard">External Standard (Membrane) Keyboard</option>
+            <option value="External Mechanical Keyboard">External Mechanical Keyboard</option>
+          </select>
+        )}
         
         {isRegistering && (
-          <div className="consent-form" style={{ background: '#f9f9f9', padding: '1rem', borderRadius: '4px', fontSize: '0.9rem' }}>
-            <h3>Consent Form</h3>
+          <div className="consent-form">
+            <h3 style={{ marginTop: 0 }}>Consent Form</h3>
             <p>
               By participating in this study, you agree to have your keystroke dynamics collected
               for research purposes. All data will be anonymized. Participation is voluntary.
             </p>
-            <label>
+            <label style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
               <input
                 type="checkbox"
                 checked={consented}
                 onChange={(e) => setConsented(e.target.checked)}
               />
-              {' '}I consent to the terms of this study.
+              I consent to the terms of this study.
             </label>
           </div>
         )}
 
-        <button type="submit" style={{ padding: '0.75rem', background: '#007bff', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>
+        <button type="submit" className="btn btn-primary">
           {isRegistering ? 'Register' : 'Login'}
         </button>
       </form>
@@ -88,13 +111,13 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
         {' '}
         <button
           onClick={() => setIsRegistering(!isRegistering)}
-          style={{ background: 'none', border: 'none', color: '#007bff', textDecoration: 'underline', cursor: 'pointer' }}
+          className="btn-link"
         >
           {isRegistering ? 'Login here' : 'Register here'}
         </button>
       </p>
 
-      {error && <p style={{ color: 'red', textAlign: 'center' }}>{error}</p>}
+      {error && <p className="error-msg">{error}</p>}
     </div>
   );
 };

@@ -1,16 +1,11 @@
 import uuid
-from typing import List
-from datetime import datetime, timedelta
-from fastapi import FastAPI, Depends, HTTPException, status
-from fastapi.middleware.cors import CORSMiddleware
-from sqlalchemy.orm import Session
-from passlib.context import CryptContext
-from pydantic import BaseModel
+import hashlib
+from typing import List, Optional
 
-from . import models, database
+import models, database
 
 # Security setup
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+pwd_context = CryptContext(schemes=["pbkdf2_sha256"], deprecated="auto")
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60
 
@@ -19,7 +14,7 @@ app = FastAPI(title="Keystroke Dynamics Platform")
 # CORS middleware for React frontend
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"], # In production, restrict this
+    allow_origins=["http://localhost:5173"], 
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -29,6 +24,7 @@ app.add_middleware(
 class UserCreate(BaseModel):
     matric_number: str
     password: str
+    physical_keyboard_type: Optional[str] = None
 
 class UserLogin(BaseModel):
     matric_number: str
@@ -60,27 +56,46 @@ class SessionStart(BaseModel):
 models.Base.metadata.create_all(bind=database.engine)
 
 # Helper functions
-def get_password_hash(password):
-    return pwd_context.hash(password)
+def get_password_hash(password: str):
+    # Pre-hash with SHA-256 to handle long inputs (bcrypt limit is 72 bytes)
+    pre_hash = hashlib.sha256(password.encode()).hexdigest()
+    # Explicitly truncate just in case pwd_context still complains
+    return pwd_context.hash(pre_hash[:72])
 
-def verify_password(plain_password, hashed_password):
-    return pwd_context.verify(plain_password, hashed_password)
+def verify_password(plain_password: str, hashed_password: str):
+    # Pre-hash with SHA-256 for verification
+    pre_hash = hashlib.sha256(plain_password.encode()).hexdigest()
+    return pwd_context.verify(pre_hash[:72], hashed_password)
 
 # Endpoints
 @app.post("/register", status_code=status.HTTP_201_CREATED)
 def register(user_in: UserCreate, db: Session = Depends(database.get_db)):
-    # Check if user already exists based on matric_hash (simplified)
-    # Since we hash everything, we'd normally need a way to lookup or prevent duplicates.
-    # For research, we assume unique registrations or handle collisions.
-    matric_hash = get_password_hash(user_in.matric_number)
-    password_hash = get_password_hash(user_in.password)
-    
-    db_user = models.User(matric_hash=matric_hash, password_hash=password_hash)
-    db.add(db_user)
-    db.commit()
-    db.refresh(db_user)
-    
-    return {"user_id": str(db_user.user_id), "message": "User registered successfully"}
+    try:
+        # Check if user already exists based on matric_hash (stable hash would be better, but sticking to salt for now)
+        # To avoid brute-force scanning all users for every registration, we just try to create.
+        # If there's a unique constraint on matric_hash, DB will throw.
+        
+        matric_hash = get_password_hash(user_in.matric_number)
+        password_hash = get_password_hash(user_in.password)
+        
+        db_user = models.User(matric_hash=matric_hash, password_hash=password_hash)
+        db.add(db_user)
+        db.commit()
+        db.refresh(db_user)
+
+        # Create participant record with keyboard info
+        participant = models.Participant(
+            user_id=db_user.user_id,
+            physical_keyboard_type=user_in.physical_keyboard_type
+        )
+        db.add(participant)
+        db.commit()
+        
+        return {"user_id": str(db_user.user_id), "message": "User registered successfully"}
+    except Exception as e:
+        db.rollback()
+        print(f"Registration Error: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Internal Server Error: {str(e)}")
 
 @app.post("/login")
 def login(user_in: UserLogin, db: Session = Depends(database.get_db)):
