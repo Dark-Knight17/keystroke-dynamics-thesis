@@ -1,0 +1,13 @@
+/* Reset and foundational styles moved to App.css or cleaned up here */
+:root {
+  font-family: Inter, system-ui, Avenir, Helvetica, Arial, sans-serif;
+  line-height: 1.5;
+  font-weight: 400;
+  color-scheme: light; /* Force light scheme for research platform consistency */
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  min-height: 100vh;
+}

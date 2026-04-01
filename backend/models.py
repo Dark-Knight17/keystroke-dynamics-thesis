@@ -2,7 +2,7 @@ import uuid
 from sqlalchemy import Column, String, DateTime, ForeignKey, Integer, Float, Boolean, Index, Text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.sql import func
-from .database import Base
+from database import Base
 
 class User(Base):
     __tablename__ = "users"
@@ -18,6 +18,7 @@ class Participant(Base):
     device_type = Column(String)
     keyboard_layout = Column(String)
     os = Column(String)
+    physical_keyboard_type = Column(String, nullable=True)
 
 class ProgrammingTask(Base):
     __tablename__ = "programming_tasks"
