@@ -92,13 +92,12 @@ def register(user_in: UserCreate, db: Session = Depends(database.get_db)):
         db.commit()
         db.refresh(db_user)
 
-        # Create participant record with keyboard and device info
+        # Create participant record by unpacking the Pydantic model
+        # Exclude User-specific fields that are not in the Participant model
+        participant_data = user_in.dict(exclude={'matric_number', 'password'})
         participant = models.Participant(
             user_id=db_user.user_id,
-            physical_keyboard_type=user_in.physical_keyboard_type,
-            device_type=user_in.device_type,
-            os=user_in.os,
-            keyboard_layout=user_in.keyboard_layout
+            **participant_data
         )
         db.add(participant)
         db.commit()
