@@ -13,6 +13,16 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
   const [error, setError] = useState('');
   const [consented, setConsented] = useState(false);
 
+  const getOS = () => {
+    const ua = navigator.userAgent;
+    if (ua.indexOf('Win') !== -1) return 'Windows';
+    if (ua.indexOf('Mac') !== -1) return 'MacOS';
+    if (ua.indexOf('Linux') !== -1) return 'Linux';
+    if (ua.indexOf('Android') !== -1) return 'Android';
+    if (ua.indexOf('like Mac') !== -1) return 'iOS';
+    return 'Unknown';
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
@@ -33,6 +43,9 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
           matric_number: matricNumber,
           password: password,
           physical_keyboard_type: physicalKeyboardType,
+          device_type: navigator.userAgent,
+          os: getOS(),
+          keyboard_layout: 'Standard QWERTY',
         });
         setIsRegistering(false);
         alert('Registration successful! Please login.');

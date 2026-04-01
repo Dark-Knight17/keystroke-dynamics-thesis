@@ -1,6 +1,12 @@
 import uuid
 import hashlib
 from typing import List, Optional
+from datetime import datetime
+from fastapi import FastAPI, Depends, HTTPException, status
+from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy.orm import Session
+from passlib.context import CryptContext
+from pydantic import BaseModel
 
 import models, database
 
@@ -25,6 +31,9 @@ class UserCreate(BaseModel):
     matric_number: str
     password: str
     physical_keyboard_type: Optional[str] = None
+    device_type: Optional[str] = None
+    os: Optional[str] = None
+    keyboard_layout: Optional[str] = None
 
 class UserLogin(BaseModel):
     matric_number: str
@@ -83,10 +92,13 @@ def register(user_in: UserCreate, db: Session = Depends(database.get_db)):
         db.commit()
         db.refresh(db_user)
 
-        # Create participant record with keyboard info
+        # Create participant record with keyboard and device info
         participant = models.Participant(
             user_id=db_user.user_id,
-            physical_keyboard_type=user_in.physical_keyboard_type
+            physical_keyboard_type=user_in.physical_keyboard_type,
+            device_type=user_in.device_type,
+            os=user_in.os,
+            keyboard_layout=user_in.keyboard_layout
         )
         db.add(participant)
         db.commit()
