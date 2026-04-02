@@ -95,6 +95,7 @@ def register(user_in: UserCreate, db: Session = Depends(database.get_db)):
         # Create participant record by unpacking the Pydantic model
         # Exclude User-specific fields that are not in the Participant model
         participant_data = user_in.dict(exclude={'matric_number', 'password'})
+        
         participant = models.Participant(
             user_id=db_user.user_id,
             **participant_data
@@ -191,6 +192,13 @@ def upload_keystrokes(batch: KeystrokeBatch, db: Session = Depends(database.get_
 @app.get("/tasks")
 def get_tasks(db: Session = Depends(database.get_db)):
     return db.query(models.ProgrammingTask).all()
+
+@app.get("/participant/{user_id}")
+def get_participant(user_id: str, db: Session = Depends(database.get_db)):
+    participant = db.query(models.Participant).filter(models.Participant.user_id == user_id).first()
+    if not participant:
+        raise HTTPException(status_code=404, detail="Participant not found")
+    return participant
 
 if __name__ == "__main__":
     import uvicorn

@@ -12,24 +12,37 @@ interface Task {
   expected_solution_length: number;
 }
 
+interface Participant {
+  participant_id: string;
+  user_id: string;
+  device_type: string;
+  keyboard_layout: string;
+  os: string;
+  physical_keyboard_type?: string;
+}
+
 const App: React.FC = () => {
   const [userId, setUserId] = useState<string | null>(null);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [keystrokeCount, setKeystrokeCount] = useState(0);
+  const [participant, setParticipant] = useState<Participant | null>(null);
 
   useEffect(() => {
-    const fetchTasks = async () => {
+    const fetchData = async () => {
       try {
-        const response = await api.get('/tasks');
-        setTasks(response.data);
+        const tasksResponse = await api.get('/tasks');
+        setTasks(tasksResponse.data);
+        
+        const participantResponse = await api.get(`/participant/${userId}`);
+        setParticipant(participantResponse.data);
       } catch (err) {
-        console.error('Failed to fetch tasks:', err);
+        console.error('Failed to fetch data:', err);
       }
     };
     if (userId) {
-      fetchTasks();
+      fetchData();
     }
   }, [userId]);
 
@@ -37,9 +50,9 @@ const App: React.FC = () => {
     try {
       const response = await api.post('/session/start', {
         task_id: task.task_id,
-        device_type: navigator.userAgent,
-        keyboard_layout: 'Standard QWERTY',
-        os: navigator.platform,
+        device_type: participant?.device_type || navigator.userAgent,
+        keyboard_layout: participant?.keyboard_layout || 'Standard QWERTY',
+        os: participant?.os || navigator.platform,
       }, {
         params: { user_id: userId },
       });
