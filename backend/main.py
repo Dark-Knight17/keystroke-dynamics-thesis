@@ -1,7 +1,9 @@
 import uuid
 import hashlib
+import hmac
+import jwt
 from typing import List, Optional
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from fastapi import FastAPI, Depends, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
@@ -30,10 +32,11 @@ app.add_middleware(
 class UserCreate(BaseModel):
     matric_number: str
     password: str
-    physical_keyboard_type: Optional[str] = None
+    physical_keyboard_type: str
+    keyboard_layout: Optional[str] = None
     device_type: Optional[str] = None
     os: Optional[str] = None
-    keyboard_layout: Optional[str] = None
+   
 
 class UserLogin(BaseModel):
     matric_number: str
@@ -65,6 +68,24 @@ class SessionStart(BaseModel):
 models.Base.metadata.create_all(bind=database.engine)
 
 # Helper functions
+SECRET_PEPPER = "my-super-secret-research-key-2026"
+JWT_SECRET = SECRET_PEPPER
+
+def create_access_token(data: dict, expires_delta: timedelta):
+    to_encode = data.copy()
+    expire = datetime.now(timezone.utc) + expires_delta
+    to_encode.update({"exp": expire})
+    encoded_jwt = jwt.encode(to_encode, JWT_SECRET, algorithm=ALGORITHM)
+    return encoded_jwt
+
+def get_stable_hash(identifier: str) -> str:
+    """Creates a deterministic hash for database lookups."""
+    return hmac.new(
+        SECRET_PEPPER.encode('utf-8'),
+        identifier.encode('utf-8'),
+        hashlib.sha256
+    ).hexdigest()
+
 def get_password_hash(password: str):
     # Pre-hash with SHA-256 to handle long inputs (bcrypt limit is 72 bytes)
     pre_hash = hashlib.sha256(password.encode()).hexdigest()
@@ -83,8 +104,7 @@ def register(user_in: UserCreate, db: Session = Depends(database.get_db)):
         # Check if user already exists based on matric_hash (stable hash would be better, but sticking to salt for now)
         # To avoid brute-force scanning all users for every registration, we just try to create.
         # If there's a unique constraint on matric_hash, DB will throw.
-        
-        matric_hash = get_password_hash(user_in.matric_number)
+        matric_hash = get_stable_hash(user_in.matric_number)
         password_hash = get_password_hash(user_in.password)
         
         db_user = models.User(matric_hash=matric_hash, password_hash=password_hash)
@@ -111,23 +131,28 @@ def register(user_in: UserCreate, db: Session = Depends(database.get_db)):
 
 @app.post("/login")
 def login(user_in: UserLogin, db: Session = Depends(database.get_db)):
-    # This is tricky because we hashed the matric number with a salt.
-    # To find the user, we'd need a stable hash or search through all users (not scalable).
-    # Requirement says "raw matric number must NEVER be stored".
-    # For this prototype, I'll iterate and verify, or use a separate stable identifier if needed.
-    # But sticking to requirements:
-    users = db.query(models.User).all()
-    target_user = None
-    for user in users:
-        if verify_password(user_in.matric_number, user.matric_hash) and \
-           verify_password(user_in.password, user.password_hash):
-            target_user = user
-            break
-            
-    if not target_user:
+    # 1. Hash the incoming matric number using our new stable function
+    search_matric_hash = get_stable_hash(user_in.matric_number)
+    
+    # 2. Ask the database to find the EXACT match (Lightning fast!)
+    target_user = db.query(models.User).filter(models.User.matric_hash == search_matric_hash).first()
+    
+    # 3. If the user doesn't exist, OR if the randomly-salted password doesn't match, reject them.
+    if not target_user or not verify_password(user_in.password, target_user.password_hash):
         raise HTTPException(status_code=400, detail="Invalid credentials")
         
-    return {"user_id": str(target_user.user_id), "access_token": "dummy-token-for-now", "token_type": "bearer"}
+    # 4. Generate a secure JWT token (2 hours expiration)
+    access_token_expires = timedelta(minutes=120)
+    access_token = create_access_token(
+        data={"sub": str(target_user.user_id)}, 
+        expires_delta=access_token_expires
+    )
+    
+    return {
+        "user_id": str(target_user.user_id), 
+        "access_token": access_token, 
+        "token_type": "bearer"
+    }
 
 @app.post("/session/start")
 def start_session(session_in: SessionStart, user_id: str, db: Session = Depends(database.get_db)):
