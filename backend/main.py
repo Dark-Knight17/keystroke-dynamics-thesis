@@ -2,6 +2,7 @@ import uuid
 import hashlib
 import hmac
 import jwt
+import os
 from typing import List, Optional
 from datetime import datetime, timedelta, timezone
 from fastapi import FastAPI, Depends, HTTPException, status
@@ -22,7 +23,7 @@ app = FastAPI(title="Keystroke Dynamics Platform")
 # CORS middleware for React frontend
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173"], 
+    allow_origins=[os.getenv("FRONTEND_URL", "http://localhost:5173")], 
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
