@@ -22,7 +22,7 @@ interface KeystrokeLoggerProps {
 const BATCH_TIME_MS = 2000;
 const BATCH_SIZE = 50;
 
-const KeystrokeLogger: React.FC<KeystrokeLoggerProps> = ({ sessionId, taskId, onKeystrokeChange }) => {
+const KeystrokeLogger: React.FC<KeystrokeLoggerProps> = ({ sessionId, taskId: _taskId, onKeystrokeChange }) => {
   const [code, setCode] = useState('# Start typing your solution here...');
   const eventBuffer = useRef<KeystrokeEvent[]>([]);
   const keystrokeCount = useRef<number>(0);
