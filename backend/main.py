@@ -3,6 +3,7 @@ import hashlib
 import hmac
 import jwt
 import os
+from dotenv import load_dotenv
 from typing import List, Optional
 from datetime import datetime, timedelta, timezone
 from fastapi import FastAPI, Depends, HTTPException, status
@@ -12,6 +13,8 @@ from passlib.context import CryptContext
 from pydantic import BaseModel
 
 import models, database
+
+load_dotenv()
 
 # Security setup
 pwd_context = CryptContext(schemes=["pbkdf2_sha256"], deprecated="auto")
@@ -69,7 +72,7 @@ class SessionStart(BaseModel):
 models.Base.metadata.create_all(bind=database.engine)
 
 # Helper functions
-SECRET_PEPPER = "my-super-secret-research-key-2026"
+SECRET_PEPPER = os.getenv("SECRET_PEPPER")
 JWT_SECRET = SECRET_PEPPER
 
 def create_access_token(data: dict, expires_delta: timedelta):
