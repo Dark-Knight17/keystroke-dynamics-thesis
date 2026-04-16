@@ -8,6 +8,7 @@ from typing import List, Optional
 from datetime import datetime, timedelta, timezone
 from fastapi import FastAPI, Depends, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.orm import Session
 from passlib.context import CryptContext
 from pydantic import BaseModel
@@ -18,6 +19,7 @@ load_dotenv()
 
 # Security setup
 pwd_context = CryptContext(schemes=["pbkdf2_sha256"], deprecated="auto")
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="login")
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60
 
@@ -101,6 +103,25 @@ def verify_password(plain_password: str, hashed_password: str):
     pre_hash = hashlib.sha256(plain_password.encode()).hexdigest()
     return pwd_context.verify(pre_hash[:72], hashed_password)
 
+def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(database.get_db)):
+    credentials_exception = HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Could not validate credentials",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+    try:
+        payload = jwt.decode(token, JWT_SECRET, algorithms=[ALGORITHM])
+        user_id: str = payload.get("sub")
+        if user_id is None:
+            raise credentials_exception
+    except jwt.PyJWTError:
+        raise credentials_exception
+    
+    user = db.query(models.User).filter(models.User.user_id == user_id).first()
+    if user is None:
+        raise credentials_exception
+    return user
+
 # Endpoints
 @app.post("/register", status_code=status.HTTP_201_CREATED)
 def register(user_in: UserCreate, db: Session = Depends(database.get_db)):
@@ -159,12 +180,16 @@ def login(user_in: UserLogin, db: Session = Depends(database.get_db)):
     }
 
 @app.post("/session/start")
-def start_session(session_in: SessionStart, user_id: str, db: Session = Depends(database.get_db)):
+def start_session(
+    session_in: SessionStart, 
+    db: Session = Depends(database.get_db),
+    current_user: models.User = Depends(get_current_user)
+):
     # Check if participant exists for this user_id
-    participant = db.query(models.Participant).filter(models.Participant.user_id == user_id).first()
+    participant = db.query(models.Participant).filter(models.Participant.user_id == current_user.user_id).first()
     if not participant:
         participant = models.Participant(
-            user_id=user_id,
+            user_id=current_user.user_id,
             device_type=session_in.device_type,
             keyboard_layout=session_in.keyboard_layout,
             os=session_in.os
@@ -184,12 +209,21 @@ def start_session(session_in: SessionStart, user_id: str, db: Session = Depends(
     return {"session_id": str(new_session.session_id)}
 
 @app.post("/session/end/{session_id}")
-def end_session(session_id: str, db: Session = Depends(database.get_db)):
-    db_session = db.query(models.Session).filter(models.Session.session_id == session_id).first()
-    if not db_session:
-        raise HTTPException(status_code=404, detail="Session not found")
+def end_session(
+    session_id: str, 
+    db: Session = Depends(database.get_db),
+    current_user: models.User = Depends(get_current_user)
+):
+    # Verify session belongs to user
+    db_session = db.query(models.Session).join(models.Participant).filter(
+        models.Session.session_id == session_id,
+        models.Participant.user_id == current_user.user_id
+    ).first()
     
-    db_session.end_time = datetime.utcnow()
+    if not db_session:
+        raise HTTPException(status_code=404, detail="Session not found or unauthorized")
+    
+    db_session.end_time = datetime.now(timezone.utc)
     # total_keystrokes will be calculated from KeystrokeEvent count
     count = db.query(models.KeystrokeEvent).filter(models.KeystrokeEvent.session_id == session_id).count()
     db_session.total_keystrokes = count
@@ -198,8 +232,21 @@ def end_session(session_id: str, db: Session = Depends(database.get_db)):
     return {"message": "Session ended", "total_keystrokes": count}
 
 @app.post("/keystrokes/batch")
-def upload_keystrokes(batch: KeystrokeBatch, db: Session = Depends(database.get_db)):
+def upload_keystrokes(
+    batch: KeystrokeBatch, 
+    db: Session = Depends(database.get_db),
+    current_user: models.User = Depends(get_current_user)
+):
+    # Verify session belongs to user
     session_id = uuid.UUID(batch.session_id)
+    db_session = db.query(models.Session).join(models.Participant).filter(
+        models.Session.session_id == session_id,
+        models.Participant.user_id == current_user.user_id
+    ).first()
+
+    if not db_session:
+        raise HTTPException(status_code=404, detail="Session not found or unauthorized")
+
     events = []
     for event_in in batch.events:
         event = models.KeystrokeEvent(

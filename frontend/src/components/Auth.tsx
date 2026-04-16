@@ -54,7 +54,9 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
           matric_number: matricNumber,
           password: password,
         });
-        onLogin(response.data.user_id);
+        const { user_id, access_token } = response.data;
+        localStorage.setItem('access_token', access_token);
+        onLogin(user_id);
       }
     } catch (err: any) {
       setError(err.response?.data?.detail || 'An error occurred. Please try again.');

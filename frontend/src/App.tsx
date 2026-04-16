@@ -53,8 +53,6 @@ const App: React.FC = () => {
         device_type: participant?.device_type || navigator.userAgent,
         keyboard_layout: participant?.keyboard_layout || 'Standard QWERTY',
         os: participant?.os || navigator.platform,
-      }, {
-        params: { user_id: userId },
       });
       setSessionId(response.data.session_id);
       setSelectedTask(task);
