@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import Editor from '@monaco-editor/react';
+import { v4 as uuidv4 } from 'uuid';
 import api from '../api';
 
 type Monaco = any;
@@ -11,6 +12,7 @@ interface KeystrokeEvent {
   cursor_position: number;
   text_length: number;
   is_auto_repeat: boolean;
+  event_sequence: number;
 }
 
 interface KeystrokeLoggerProps {
@@ -26,6 +28,7 @@ const KeystrokeLogger: React.FC<KeystrokeLoggerProps> = ({ sessionId, taskId: _t
   const [code, setCode] = useState('# Start typing your solution here...');
   const eventBuffer = useRef<KeystrokeEvent[]>([]);
   const keystrokeCount = useRef<number>(0);
+  const eventSequence = useRef<number>(0);
   const editorRef = useRef<any>(null);
   const monacoRef = useRef<Monaco | null>(null);
 
@@ -34,19 +37,23 @@ const KeystrokeLogger: React.FC<KeystrokeLoggerProps> = ({ sessionId, taskId: _t
 
     const eventsToUpload = [...eventBuffer.current];
     eventBuffer.current = [];
+    const batchId = uuidv4();
 
     try {
       await api.post('/keystrokes/batch', {
         session_id: sessionId,
+        batch_id: batchId,
         events: eventsToUpload,
       });
     } catch (error) {
       console.error('Failed to upload keystrokes:', error);
+      // Put back at the beginning of buffer
       eventBuffer.current = [...eventsToUpload, ...eventBuffer.current];
     }
   };
 
   useEffect(() => {
+    eventSequence.current = 0; // Reset sequence on new session
     const interval = setInterval(() => {
       flushBuffer();
     }, BATCH_TIME_MS);
@@ -69,11 +76,17 @@ const KeystrokeLogger: React.FC<KeystrokeLoggerProps> = ({ sessionId, taskId: _t
     });
 
     const logEvent = (e: any, type: string) => {
+      // Explicitly drop auto-repeat keydown events
+      if (type === 'keydown' && e.browserEvent.repeat) {
+        return;
+      }
+
       const position = editor.getPosition();
       const model = editor.getModel();
       const cursorOffset = model ? model.getOffsetAt(position) : 0;
       const textLength = model ? model.getValueLength() : 0;
 
+      eventSequence.current += 1;
       const event: KeystrokeEvent = {
         key: e.browserEvent.key,
         event_type: type,
@@ -81,6 +94,7 @@ const KeystrokeLogger: React.FC<KeystrokeLoggerProps> = ({ sessionId, taskId: _t
         cursor_position: cursorOffset,
         text_length: textLength,
         is_auto_repeat: e.browserEvent.repeat || false,
+        event_sequence: eventSequence.current,
       };
 
       eventBuffer.current.push(event);

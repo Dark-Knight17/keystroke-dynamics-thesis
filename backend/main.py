@@ -59,9 +59,11 @@ class KeystrokeEventCreate(BaseModel):
     cursor_position: int
     text_length: int
     is_auto_repeat: bool
+    event_sequence: int
 
 class KeystrokeBatch(BaseModel):
     session_id: str
+    batch_id: str
     events: List[KeystrokeEventCreate]
 
 class SessionStart(BaseModel):
@@ -247,7 +249,15 @@ def upload_keystrokes(
     if not db_session:
         raise HTTPException(status_code=404, detail="Session not found or unauthorized")
 
+    # Check for idempotency
+    existing_batch = db.query(models.KeystrokeEvent).filter(
+        models.KeystrokeEvent.batch_id == batch.batch_id
+    ).first()
+    if existing_batch:
+        return {"status": "skipped", "message": "Batch already processed", "count": 0}
+
     events = []
+    received_at = datetime.now(timezone.utc)
     for event_in in batch.events:
         event = models.KeystrokeEvent(
             session_id=session_id,
@@ -256,7 +266,10 @@ def upload_keystrokes(
             timestamp=event_in.timestamp,
             cursor_position=event_in.cursor_position,
             text_length=event_in.text_length,
-            is_auto_repeat=event_in.is_auto_repeat
+            is_auto_repeat=event_in.is_auto_repeat,
+            event_sequence=event_in.event_sequence,
+            batch_id=batch.batch_id,
+            server_received_at=received_at
         )
         events.append(event)
     

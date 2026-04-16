@@ -47,6 +47,9 @@ class KeystrokeEvent(Base):
     cursor_position = Column(Integer)
     text_length = Column(Integer)
     is_auto_repeat = Column(Boolean, default=False)
+    event_sequence = Column(Integer, nullable=False)
+    server_received_at = Column(DateTime(timezone=True), server_default=func.now())
+    batch_id = Column(String, nullable=False)
 
 # Index session_id for fast retrieval
 Index("ix_keystroke_events_session_id", KeystrokeEvent.session_id)
