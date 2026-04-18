@@ -375,8 +375,8 @@ def export_sessions(
         # Write header
         writer.writerow([
             "participant_id", "session_id", "task_id", "event_sequence", 
-            "key", "event_type", "server_received_at", "cursor_position", 
-            "text_length", "is_auto_repeat", "is_modifier"
+            "key", "event_type", "timestamp", "server_received_at", 
+            "cursor_position", "text_length", "is_auto_repeat", "is_modifier"
         ])
         yield output.getvalue()
         output.truncate(0)
@@ -390,6 +390,7 @@ def export_sessions(
             models.KeystrokeEvent.event_sequence,
             models.KeystrokeEvent.key,
             models.KeystrokeEvent.event_type,
+            models.KeystrokeEvent.timestamp,
             models.KeystrokeEvent.server_received_at,
             models.KeystrokeEvent.cursor_position,
             models.KeystrokeEvent.text_length,
