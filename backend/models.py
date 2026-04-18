@@ -47,6 +47,7 @@ class KeystrokeEvent(Base):
     cursor_position = Column(Integer)
     text_length = Column(Integer)
     is_auto_repeat = Column(Boolean, default=False)
+    is_modifier = Column(Boolean, default=False)
     event_sequence = Column(Integer, nullable=False)
     server_received_at = Column(DateTime(timezone=True), server_default=func.now())
     batch_id = Column(String, nullable=False, index=True)  # For batch processing and ordering

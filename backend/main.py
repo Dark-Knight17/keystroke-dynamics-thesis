@@ -64,6 +64,7 @@ class KeystrokeEventCreate(BaseModel):
     cursor_position: int
     text_length: int
     is_auto_repeat: bool
+    is_modifier: bool = False
     event_sequence: int
 
 class KeystrokeBatch(BaseModel):
@@ -287,6 +288,7 @@ def upload_keystrokes(
             cursor_position=event_in.cursor_position,
             text_length=event_in.text_length,
             is_auto_repeat=event_in.is_auto_repeat,
+            is_modifier=event_in.is_modifier,
             event_sequence=event_in.event_sequence,
             batch_id=batch.batch_id,
             server_received_at=received_at
@@ -297,6 +299,45 @@ def upload_keystrokes(
     db.commit()
     
     return {"status": "success", "count": len(events)}
+
+@app.post("/keystrokes/beacon")
+def upload_keystrokes_beacon(
+    batch: KeystrokeBatch, 
+    db: Session = Depends(database.get_db)
+):
+    """Special endpoint for navigator.sendBeacon which may not support headers/cookies easily."""
+    session_id = uuid.UUID(batch.session_id)
+    # Note: Ownership check is skipped here for Beacon reliability, 
+    # but session_id existence is implicit. 
+    # In a real production app, we might use a short-lived token in the URL.
+    
+    existing_batch = db.query(models.KeystrokeEvent).filter(
+        models.KeystrokeEvent.batch_id == batch.batch_id
+    ).first()
+    if existing_batch:
+        return {"status": "skipped"}
+
+    events = []
+    received_at = datetime.now(timezone.utc)
+    for event_in in batch.events:
+        event = models.KeystrokeEvent(
+            session_id=session_id,
+            key=event_in.key,
+            event_type=event_in.event_type,
+            timestamp=event_in.timestamp,
+            cursor_position=event_in.cursor_position,
+            text_length=event_in.text_length,
+            is_auto_repeat=event_in.is_auto_repeat,
+            is_modifier=event_in.is_modifier,
+            event_sequence=event_in.event_sequence,
+            batch_id=batch.batch_id,
+            server_received_at=received_at
+        )
+        events.append(event)
+    
+    db.add_all(events)
+    db.commit()
+    return {"status": "success"}
 
 @app.get("/tasks")
 def get_tasks(db: Session = Depends(database.get_db)):

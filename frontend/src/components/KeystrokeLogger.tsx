@@ -12,6 +12,7 @@ interface KeystrokeEvent {
   cursor_position: number;
   text_length: number;
   is_auto_repeat: boolean;
+  is_modifier: boolean;
   event_sequence: number;
 }
 
@@ -24,6 +25,8 @@ interface KeystrokeLoggerProps {
 const BATCH_TIME_MS = 2000;
 const BATCH_SIZE = 50;
 
+const MODIFIER_KEYS = new Set(['Shift', 'Control', 'Alt', 'Meta', 'CapsLock']);
+
 const KeystrokeLogger: React.FC<KeystrokeLoggerProps> = ({ sessionId, taskId: _taskId, onKeystrokeChange }) => {
   const [code, setCode] = useState('# Start typing your solution here...');
   const eventBuffer = useRef<KeystrokeEvent[]>([]);
@@ -33,19 +36,27 @@ const KeystrokeLogger: React.FC<KeystrokeLoggerProps> = ({ sessionId, taskId: _t
   const editorRef = useRef<any>(null);
   const monacoRef = useRef<Monaco | null>(null);
 
-  const flushBuffer = async () => {
+  const flushBuffer = async (useBeacon = false) => {
     if (eventBuffer.current.length === 0) return;
 
     const eventsToUpload = [...eventBuffer.current];
     eventBuffer.current = [];
     const batchId = uuidv4();
+    const payload = {
+      session_id: sessionId,
+      batch_id: batchId,
+      events: eventsToUpload,
+    };
+
+    if (useBeacon) {
+      const url = `${import.meta.env.VITE_API_URL || 'http://localhost:8000'}/keystrokes/beacon`;
+      const blob = new Blob([JSON.stringify(payload)], { type: 'application/json' });
+      navigator.sendBeacon(url, blob);
+      return;
+    }
 
     try {
-      await api.post('/keystrokes/batch', {
-        session_id: sessionId,
-        batch_id: batchId,
-        events: eventsToUpload,
-      });
+      await api.post('/keystrokes/batch', payload);
     } catch (error) {
       console.error('Failed to upload keystrokes:', error);
       // Put back at the beginning of buffer
@@ -58,7 +69,7 @@ const KeystrokeLogger: React.FC<KeystrokeLoggerProps> = ({ sessionId, taskId: _t
     
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'hidden') {
-        flushBuffer();
+        flushBuffer(true);
         pressedKeys.current.clear();
       }
     };
@@ -72,7 +83,7 @@ const KeystrokeLogger: React.FC<KeystrokeLoggerProps> = ({ sessionId, taskId: _t
     return () => {
       document.removeEventListener('visibilitychange', handleVisibilityChange);
       clearInterval(interval);
-      flushBuffer();
+      flushBuffer(true); // Final flush on unmount
     };
   }, [sessionId]);
 
@@ -113,6 +124,7 @@ const KeystrokeLogger: React.FC<KeystrokeLoggerProps> = ({ sessionId, taskId: _t
         cursor_position: cursorOffset,
         text_length: textLength,
         is_auto_repeat: e.browserEvent.repeat || false,
+        is_modifier: MODIFIER_KEYS.has(key),
         event_sequence: eventSequence.current,
       };
 
