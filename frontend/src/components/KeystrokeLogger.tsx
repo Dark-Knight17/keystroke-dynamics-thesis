@@ -33,6 +33,7 @@ const KeystrokeLogger: React.FC<KeystrokeLoggerProps> = ({ sessionId, taskId: _t
   const keystrokeCount = useRef<number>(0);
   const eventSequence = useRef<number>(0);
   const pressedKeys = useRef<Set<string>>(new Set());
+  const beaconSignature = useRef<string | null>(null);
   const editorRef = useRef<any>(null);
   const monacoRef = useRef<Monaco | null>(null);
 
@@ -48,8 +49,9 @@ const KeystrokeLogger: React.FC<KeystrokeLoggerProps> = ({ sessionId, taskId: _t
       events: eventsToUpload,
     };
 
-    if (useBeacon) {
-      const url = `${import.meta.env.VITE_API_URL || 'http://localhost:8000'}/keystrokes/beacon`;
+    if (useBeacon && beaconSignature.current) {
+      const baseUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+      const url = `${baseUrl}/keystrokes/beacon?signature=${beaconSignature.current}`;
       const blob = new Blob([JSON.stringify(payload)], { type: 'application/json' });
       navigator.sendBeacon(url, blob);
       return;
@@ -67,6 +69,17 @@ const KeystrokeLogger: React.FC<KeystrokeLoggerProps> = ({ sessionId, taskId: _t
   useEffect(() => {
     eventSequence.current = 0; // Reset sequence on new session
     
+    // Fetch beacon signature
+    const fetchSignature = async () => {
+      try {
+        const response = await api.get(`/session/${sessionId}/signature`);
+        beaconSignature.current = response.data.signature;
+      } catch (error) {
+        console.error('Failed to fetch beacon signature:', error);
+      }
+    };
+    fetchSignature();
+
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'hidden') {
         flushBuffer(true);

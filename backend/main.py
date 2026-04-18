@@ -254,7 +254,9 @@ def end_session(
     return {"message": "Session ended", "total_keystrokes": count}
 
 @app.post("/keystrokes/batch")
+@limiter.limit("60/minute")
 def upload_keystrokes(
+    request: Request,
     batch: KeystrokeBatch, 
     db: Session = Depends(database.get_db),
     current_user: models.User = Depends(get_current_user)
@@ -303,16 +305,49 @@ def upload_keystrokes(
     
     return {"status": "success", "count": len(events)}
 
+@app.get("/session/{session_id}/signature")
+def get_session_signature(
+    session_id: str,
+    db: Session = Depends(database.get_db),
+    current_user: models.User = Depends(get_current_user)
+):
+    # Verify session belongs to user
+    session_uuid = uuid.UUID(session_id)
+    db_session = db.query(models.Session).join(models.Participant).filter(
+        models.Session.session_id == session_uuid,
+        models.Participant.user_id == current_user.user_id
+    ).first()
+
+    if not db_session:
+        raise HTTPException(status_code=404, detail="Session not found or unauthorized")
+
+    # Generate HMAC-SHA256 signature of the session_id
+    signature = hmac.new(
+        JWT_SECRET.encode('utf-8'),
+        session_id.encode('utf-8'),
+        hashlib.sha256
+    ).hexdigest()
+
+    return {"signature": signature}
+
 @app.post("/keystrokes/beacon")
 def upload_keystrokes_beacon(
     batch: KeystrokeBatch, 
+    signature: str,
     db: Session = Depends(database.get_db)
 ):
-    """Special endpoint for navigator.sendBeacon which may not support headers/cookies easily."""
+    """Special endpoint for navigator.sendBeacon with HMAC signature validation."""
+    # Validate signature
+    expected_signature = hmac.new(
+        JWT_SECRET.encode('utf-8'),
+        batch.session_id.encode('utf-8'),
+        hashlib.sha256
+    ).hexdigest()
+
+    if not hmac.compare_digest(expected_signature, signature):
+        raise HTTPException(status_code=403, detail="Invalid beacon signature")
+
     session_id = uuid.UUID(batch.session_id)
-    # Note: Ownership check is skipped here for Beacon reliability, 
-    # but session_id existence is implicit. 
-    # In a real production app, we might use a short-lived token in the URL.
     
     existing_batch = db.query(models.KeystrokeEvent).filter(
         models.KeystrokeEvent.batch_id == batch.batch_id
