@@ -11,17 +11,19 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from passlib.context import CryptContext
 from pydantic import BaseModel
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
 
 import models, database
 
 load_dotenv()
 
-# Security setup
-pwd_context = CryptContext(schemes=["pbkdf2_sha256"], deprecated="auto")
-ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 120
-
+# Rate limiter setup
+limiter = Limiter(key_func=get_remote_address)
 app = FastAPI(title="Keystroke Dynamics Platform")
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 # CORS middleware for React frontend
 app.add_middleware(
@@ -31,6 +33,11 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Security setup
+pwd_context = CryptContext(schemes=["pbkdf2_sha256"], deprecated="auto")
+ALGORITHM = "HS256"
+ACCESS_TOKEN_EXPIRE_MINUTES = 120
 
 # Pydantic Schemas
 class UserCreate(BaseModel):
@@ -75,7 +82,7 @@ models.Base.metadata.create_all(bind=database.engine)
 
 # Helper functions
 SECRET_PEPPER = os.getenv("SECRET_PEPPER")
-JWT_SECRET = SECRET_PEPPER
+JWT_SECRET = os.getenv("JWT_SECRET")
 
 def create_access_token(data: dict, expires_delta: timedelta):
     to_encode = data.copy()
@@ -125,11 +132,10 @@ def get_current_user(request: Request, db: Session = Depends(database.get_db)):
 
 # Endpoints
 @app.post("/register", status_code=status.HTTP_201_CREATED)
-def register(user_in: UserCreate, db: Session = Depends(database.get_db)):
+@limiter.limit("10/minute")
+def register(request: Request, user_in: UserCreate, db: Session = Depends(database.get_db)):
     try:
-        # Check if user already exists based on matric_hash (stable hash would be better, but sticking to salt for now)
-        # To avoid brute-force scanning all users for every registration, we just try to create.
-        # If there's a unique constraint on matric_hash, DB will throw.
+        # Check if user already exists based on matric_hash
         matric_hash = get_stable_hash(user_in.matric_number)
         password_hash = get_password_hash(user_in.password)
         
@@ -138,8 +144,6 @@ def register(user_in: UserCreate, db: Session = Depends(database.get_db)):
         db.commit()
         db.refresh(db_user)
 
-        # Create participant record by unpacking the Pydantic model
-        # Exclude User-specific fields that are not in the Participant model
         participant_data = user_in.dict(exclude={'matric_number', 'password'})
         
         participant = models.Participant(
@@ -153,22 +157,18 @@ def register(user_in: UserCreate, db: Session = Depends(database.get_db)):
     except Exception as e:
         db.rollback()
         print(f"Registration Error: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Internal Server Error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Internal Server Error")
 
 @app.post("/login")
-def login(user_in: UserLogin, response: Response, db: Session = Depends(database.get_db)):
-    # 1. Hash the incoming matric number using our new stable function
+@limiter.limit("10/minute")
+def login(request: Request, user_in: UserLogin, response: Response, db: Session = Depends(database.get_db)):
     search_matric_hash = get_stable_hash(user_in.matric_number)
-    
-    # 2. Ask the database to find the EXACT match (Lightning fast!)
     target_user = db.query(models.User).filter(models.User.matric_hash == search_matric_hash).first()
     
-    # 3. If the user doesn't exist, OR if the randomly-salted password doesn't match, reject them.
     if not target_user or not verify_password(user_in.password, target_user.password_hash):
         raise HTTPException(status_code=400, detail="Invalid credentials")
         
-    # 4. Generate a secure JWT token (2 hours expiration)
-    access_token_expires = timedelta(minutes=120)
+    access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     access_token = create_access_token(
         data={"sub": str(target_user.user_id)}, 
         expires_delta=access_token_expires
@@ -303,7 +303,14 @@ def get_tasks(db: Session = Depends(database.get_db)):
     return db.query(models.ProgrammingTask).all()
 
 @app.get("/participant/{user_id}")
-def get_participant(user_id: str, db: Session = Depends(database.get_db)):
+def get_participant(
+    user_id: str, 
+    db: Session = Depends(database.get_db),
+    current_user: models.User = Depends(get_current_user)
+):
+    if str(current_user.user_id) != user_id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Unauthorized access to participant data")
+
     participant = db.query(models.Participant).filter(models.Participant.user_id == user_id).first()
     if not participant:
         raise HTTPException(status_code=404, detail="Participant not found")
