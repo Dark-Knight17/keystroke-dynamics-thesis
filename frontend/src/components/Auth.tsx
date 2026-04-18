@@ -10,6 +10,7 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
   const [matricNumber, setMatricNumber] = useState('');
   const [password, setPassword] = useState('');
   const [physicalKeyboardType, setPhysicalKeyboardType] = useState('');
+  const [keyboardLayout, setKeyboardLayout] = useState('QWERTY');
   const [error, setError] = useState('');
   const [consented, setConsented] = useState(false);
 
@@ -21,23 +22,6 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
     if (ua.indexOf('Android') !== -1) return 'Android';
     if (ua.indexOf('like Mac') !== -1) return 'iOS';
     return 'Unknown';
-  };
-
-  const getKeyboardLayout = async () => {
-    try {
-      if ('keyboard' in navigator && (navigator as any).keyboard.getLayoutMap) {
-        // This API is experimental and might require a user gesture or focus in some browsers
-        // For registration, we attempt to capture it.
-        const layoutMap = await (navigator as any).keyboard.getLayoutMap();
-        // Just checking if we can get a map is often enough to confirm QWERTY vs others 
-        // by looking at specific keys, but the API itself doesn't just return "QWERTY".
-        // However, the prompt asks to detect it. If the API exists, we'll label it "Detected".
-        return "Detected via LayoutMap";
-      }
-    } catch (e) {
-      console.error("Keyboard Layout API error:", e);
-    }
-    return "Unknown";
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -56,14 +40,13 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
 
     try {
       if (isRegistering) {
-        const detectedLayout = await getKeyboardLayout();
         await api.post('/register', {
           matric_number: matricNumber,
           password: password,
           physical_keyboard_type: physicalKeyboardType,
           device_type: navigator.userAgent,
           os: getOS(),
-          keyboard_layout: detectedLayout,
+          keyboard_layout: keyboardLayout,
         });
         setIsRegistering(false);
         alert('Registration successful! Please login.');
@@ -102,17 +85,32 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
         />
 
         {isRegistering && (
-          <select
-            value={physicalKeyboardType}
-            onChange={(e) => setPhysicalKeyboardType(e.target.value)}
-            required
-            className="auth-input"
-          >
-            <option value="" disabled>Select your keyboard type...</option>
-            <option value="Built-in Laptop Keyboard">Built-in Laptop Keyboard</option>
-            <option value="External Standard (Membrane) Keyboard">External Standard (Membrane) Keyboard</option>
-            <option value="External Mechanical Keyboard">External Mechanical Keyboard</option>
-          </select>
+          <>
+            <select
+              value={physicalKeyboardType}
+              onChange={(e) => setPhysicalKeyboardType(e.target.value)}
+              required
+              className="auth-input"
+            >
+              <option value="" disabled>Select your keyboard type...</option>
+              <option value="Built-in Laptop Keyboard">Built-in Laptop Keyboard</option>
+              <option value="External Standard (Membrane) Keyboard">External Standard (Membrane) Keyboard</option>
+              <option value="External Mechanical Keyboard">External Mechanical Keyboard</option>
+            </select>
+
+            <select
+              value={keyboardLayout}
+              onChange={(e) => setKeyboardLayout(e.target.value)}
+              required
+              className="auth-input"
+            >
+              <option value="QWERTY">QWERTY</option>
+              <option value="AZERTY">AZERTY</option>
+              <option value="Dvorak">Dvorak</option>
+              <option value="Colemak">Colemak</option>
+              <option value="Unknown">Unknown</option>
+            </select>
+          </>
         )}
         
         {isRegistering && (
