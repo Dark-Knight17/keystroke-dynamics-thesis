@@ -6,9 +6,8 @@ import os
 from dotenv import load_dotenv
 from typing import List, Optional
 from datetime import datetime, timedelta, timezone
-from fastapi import FastAPI, Depends, HTTPException, status
+from fastapi import FastAPI, Depends, HTTPException, status, Response, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.orm import Session
 from passlib.context import CryptContext
 from pydantic import BaseModel
@@ -19,9 +18,8 @@ load_dotenv()
 
 # Security setup
 pwd_context = CryptContext(schemes=["pbkdf2_sha256"], deprecated="auto")
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="login")
 ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 60
+ACCESS_TOKEN_EXPIRE_MINUTES = 120
 
 app = FastAPI(title="Keystroke Dynamics Platform")
 
@@ -105,23 +103,24 @@ def verify_password(plain_password: str, hashed_password: str):
     pre_hash = hashlib.sha256(plain_password.encode()).hexdigest()
     return pwd_context.verify(pre_hash[:72], hashed_password)
 
-def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(database.get_db)):
-    credentials_exception = HTTPException(
-        status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="Could not validate credentials",
-        headers={"WWW-Authenticate": "Bearer"},
-    )
+def get_current_user(request: Request, db: Session = Depends(database.get_db)):
+    token = request.cookies.get("access_token")
+    if not token:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Not authenticated",
+        )
     try:
         payload = jwt.decode(token, JWT_SECRET, algorithms=[ALGORITHM])
         user_id: str = payload.get("sub")
         if user_id is None:
-            raise credentials_exception
+            raise HTTPException(status_code=401, detail="Invalid token")
     except jwt.PyJWTError:
-        raise credentials_exception
+        raise HTTPException(status_code=401, detail="Invalid token")
     
     user = db.query(models.User).filter(models.User.user_id == user_id).first()
     if user is None:
-        raise credentials_exception
+        raise HTTPException(status_code=401, detail="User not found")
     return user
 
 # Endpoints
@@ -157,7 +156,7 @@ def register(user_in: UserCreate, db: Session = Depends(database.get_db)):
         raise HTTPException(status_code=500, detail=f"Internal Server Error: {str(e)}")
 
 @app.post("/login")
-def login(user_in: UserLogin, db: Session = Depends(database.get_db)):
+def login(user_in: UserLogin, response: Response, db: Session = Depends(database.get_db)):
     # 1. Hash the incoming matric number using our new stable function
     search_matric_hash = get_stable_hash(user_in.matric_number)
     
@@ -175,10 +174,17 @@ def login(user_in: UserLogin, db: Session = Depends(database.get_db)):
         expires_delta=access_token_expires
     )
     
+    response.set_cookie(
+        key="access_token",
+        value=access_token,
+        httponly=True,
+        secure=True,
+        samesite="none",
+        max_age=120 * 60
+    )
+    
     return {
-        "user_id": str(target_user.user_id), 
-        "access_token": access_token, 
-        "token_type": "bearer"
+        "user_id": str(target_user.user_id)
     }
 
 @app.post("/session/start")
@@ -200,6 +206,16 @@ def start_session(
         db.commit()
         db.refresh(participant)
     
+    # Check for active, incomplete session for the requested task
+    active_session = db.query(models.Session).filter(
+        models.Session.participant_id == participant.participant_id,
+        models.Session.task_id == session_in.task_id,
+        models.Session.end_time == None
+    ).first()
+    
+    if active_session:
+        raise HTTPException(status_code=400, detail="You already have an active session for this task.")
+
     new_session = models.Session(
         participant_id=participant.participant_id,
         task_id=session_in.task_id
@@ -239,6 +255,10 @@ def upload_keystrokes(
     db: Session = Depends(database.get_db),
     current_user: models.User = Depends(get_current_user)
 ):
+    # Enforce strict maximum payload size
+    if len(batch.events) > 200:
+        raise HTTPException(status_code=400, detail="Batch size exceeds maximum allowed (200 events).")
+
     # Verify session belongs to user
     session_id = uuid.UUID(batch.session_id)
     db_session = db.query(models.Session).join(models.Participant).filter(

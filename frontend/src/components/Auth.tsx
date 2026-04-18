@@ -54,8 +54,7 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
           matric_number: matricNumber,
           password: password,
         });
-        const { user_id, access_token } = response.data;
-        localStorage.setItem('access_token', access_token);
+        const { user_id } = response.data;
         onLogin(user_id);
       }
     } catch (err: any) {

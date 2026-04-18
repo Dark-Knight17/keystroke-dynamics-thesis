@@ -29,6 +29,7 @@ const KeystrokeLogger: React.FC<KeystrokeLoggerProps> = ({ sessionId, taskId: _t
   const eventBuffer = useRef<KeystrokeEvent[]>([]);
   const keystrokeCount = useRef<number>(0);
   const eventSequence = useRef<number>(0);
+  const pressedKeys = useRef<Set<string>>(new Set());
   const editorRef = useRef<any>(null);
   const monacoRef = useRef<Monaco | null>(null);
 
@@ -54,11 +55,22 @@ const KeystrokeLogger: React.FC<KeystrokeLoggerProps> = ({ sessionId, taskId: _t
 
   useEffect(() => {
     eventSequence.current = 0; // Reset sequence on new session
+    
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'hidden') {
+        flushBuffer();
+        pressedKeys.current.clear();
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
     const interval = setInterval(() => {
       flushBuffer();
     }, BATCH_TIME_MS);
 
     return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
       clearInterval(interval);
       flushBuffer();
     };
@@ -76,9 +88,16 @@ const KeystrokeLogger: React.FC<KeystrokeLoggerProps> = ({ sessionId, taskId: _t
     });
 
     const logEvent = (e: any, type: string) => {
-      // Explicitly drop auto-repeat keydown events
-      if (type === 'keydown' && e.browserEvent.repeat) {
-        return;
+      const key = e.browserEvent.key;
+
+      if (type === 'keydown') {
+        // Prevent auto-repeat events
+        if (e.browserEvent.repeat || pressedKeys.current.has(key)) {
+          return;
+        }
+        pressedKeys.current.add(key);
+      } else if (type === 'keyup') {
+        pressedKeys.current.delete(key);
       }
 
       const position = editor.getPosition();
@@ -88,7 +107,7 @@ const KeystrokeLogger: React.FC<KeystrokeLoggerProps> = ({ sessionId, taskId: _t
 
       eventSequence.current += 1;
       const event: KeystrokeEvent = {
-        key: e.browserEvent.key,
+        key: key,
         event_type: type,
         timestamp: performance.now(),
         cursor_position: cursorOffset,
