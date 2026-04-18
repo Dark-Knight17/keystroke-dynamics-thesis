@@ -8,12 +8,15 @@ from typing import List, Optional
 from datetime import datetime, timedelta, timezone
 from fastapi import FastAPI, Depends, HTTPException, status, Response, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 from passlib.context import CryptContext
 from pydantic import BaseModel
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
+import csv
+import io
 
 import models, database
 
@@ -356,6 +359,61 @@ def get_participant(
     if not participant:
         raise HTTPException(status_code=404, detail="Participant not found")
     return participant
+
+@app.get("/export/sessions")
+def export_sessions(
+    db: Session = Depends(database.get_db),
+    current_user: models.User = Depends(get_current_user)
+):
+    if not current_user.is_admin:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin access required")
+
+    def iter_csv():
+        output = io.StringIO()
+        writer = csv.writer(output)
+        
+        # Write header
+        writer.writerow([
+            "participant_id", "session_id", "task_id", "event_sequence", 
+            "key", "event_type", "server_received_at", "cursor_position", 
+            "text_length", "is_auto_repeat", "is_modifier"
+        ])
+        yield output.getvalue()
+        output.truncate(0)
+        output.seek(0)
+
+        # Batch query for efficiency
+        query = db.query(
+            models.Participant.participant_id,
+            models.KeystrokeEvent.session_id,
+            models.Session.task_id,
+            models.KeystrokeEvent.event_sequence,
+            models.KeystrokeEvent.key,
+            models.KeystrokeEvent.event_type,
+            models.KeystrokeEvent.server_received_at,
+            models.KeystrokeEvent.cursor_position,
+            models.KeystrokeEvent.text_length,
+            models.KeystrokeEvent.is_auto_repeat,
+            models.KeystrokeEvent.is_modifier
+        ).join(
+            models.Session, models.KeystrokeEvent.session_id == models.Session.session_id
+        ).join(
+            models.Participant, models.Session.participant_id == models.Participant.participant_id
+        ).order_by(
+            models.KeystrokeEvent.session_id, models.KeystrokeEvent.event_sequence
+        )
+
+        for row in query.all():
+            writer.writerow(row)
+            yield output.getvalue()
+            output.truncate(0)
+            output.seek(0)
+
+    return StreamingResponse(
+        iter_csv(),
+        media_type="text/csv",
+        headers={"Content-Disposition": "attachment; filename=sessions_export.csv"}
+    )
 
 if __name__ == "__main__":
     import uvicorn

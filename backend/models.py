@@ -9,6 +9,7 @@ class User(Base):
     user_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     matric_hash = Column(String, unique=True, nullable=False)
     password_hash = Column(String, nullable=False)
+    is_admin = Column(Boolean, default=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
 class Participant(Base):

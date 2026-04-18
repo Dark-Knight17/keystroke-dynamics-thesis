@@ -8,3 +8,5 @@ slowapi
 psycopg2-binary
 passlib[bcrypt]
 bcrypt
+pandas
+numpy
