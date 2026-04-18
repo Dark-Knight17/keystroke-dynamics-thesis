@@ -49,7 +49,7 @@ class KeystrokeEvent(Base):
     is_auto_repeat = Column(Boolean, default=False)
     event_sequence = Column(Integer, nullable=False)
     server_received_at = Column(DateTime(timezone=True), server_default=func.now())
-    batch_id = Column(String, nullable=False)
+    batch_id = Column(String, nullable=False, index=True)  # For batch processing and ordering
 
 # Index session_id for fast retrieval
 Index("ix_keystroke_events_session_id", KeystrokeEvent.session_id)
