@@ -8,8 +8,10 @@ interface Task {
   task_id: number;
   task_title: string;
   description: string;
+  day: number;
   difficulty_level: string;
   expected_solution_length: number;
+  is_completed: boolean;
 }
 
 interface Participant {
@@ -29,18 +31,19 @@ const App: React.FC = () => {
   const [keystrokeCount, setKeystrokeCount] = useState(0);
   const [participant, setParticipant] = useState<Participant | null>(null);
 
+  const fetchData = async () => {
+    try {
+      const tasksResponse = await api.get('/tasks');
+      setTasks(tasksResponse.data);
+      
+      const participantResponse = await api.get(`/participant/${userId}`);
+      setParticipant(participantResponse.data);
+    } catch (err) {
+      console.error('Failed to fetch data:', err);
+    }
+  };
+
   useEffect(() => {
-    const fetchData = async () => {
-      try {
-        const tasksResponse = await api.get('/tasks');
-        setTasks(tasksResponse.data);
-        
-        const participantResponse = await api.get(`/participant/${userId}`);
-        setParticipant(participantResponse.data);
-      } catch (err) {
-        console.error('Failed to fetch data:', err);
-      }
-    };
     if (userId) {
       fetchData();
     }
@@ -53,13 +56,15 @@ const App: React.FC = () => {
         device_type: participant?.device_type || navigator.userAgent,
         keyboard_layout: participant?.keyboard_layout || 'Standard QWERTY',
         os: participant?.os || navigator.platform,
+        epoch_anchor: Date.now()
       });
       setSessionId(response.data.session_id);
       setSelectedTask(task);
       setKeystrokeCount(0);
-    } catch (err) {
+    } catch (err: any) {
       console.error('Failed to start session:', err);
-      alert('Could not start session. Please try again.');
+      const msg = err.response?.data?.detail || 'Could not start session. Please try again.';
+      alert(msg);
     }
   };
 
@@ -71,6 +76,7 @@ const App: React.FC = () => {
       setSelectedTask(null);
       setKeystrokeCount(0);
       alert('Session ended successfully. Thank you!');
+      fetchData(); // Refresh completion status
     } catch (err) {
       console.error('Failed to end session:', err);
     }
@@ -119,8 +125,7 @@ const App: React.FC = () => {
   }
 
   const groupedTasks = tasks.reduce((acc, task) => {
-    const dayMatch = task.task_title.match(/\[Day (\d)\]/);
-    const day = dayMatch ? `Day ${dayMatch[1]}` : 'Other';
+    const day = `Day ${task.day}`;
     if (!acc[day]) acc[day] = [];
     acc[day].push(task);
     return acc;
@@ -128,35 +133,62 @@ const App: React.FC = () => {
 
   const days = ['Day 1', 'Day 2', 'Day 3'];
 
+  const isDayLocked = (dayNum: number): boolean => {
+    if (dayNum <= 1) return false;
+    return tasks.some(t => t.day < dayNum && !t.is_completed);
+  };
+
   return (
     <div className="App">
       <h1>Research Participant Dashboard</h1>
       <p>Please complete the tasks assigned for each day in order.</p>
       
       <div className="day-columns" style={{ display: 'flex', gap: '2rem', marginTop: '2rem' }}>
-        {days.map(day => (
-          <div key={day} className="day-column" style={{ flex: 1 }}>
-            <h2 style={{ borderBottom: '2px solid #333', paddingBottom: '0.5rem' }}>{day}</h2>
-            <div className="task-list">
-              {(groupedTasks[day] || []).map((task) => (
-                <div key={task.task_id} className="task-card" style={{ marginBottom: '1rem', border: '1px solid #ddd', padding: '1rem', borderRadius: '8px' }}>
-                  <h3 style={{ marginTop: 0, fontSize: '1.1rem' }}>{task.task_title.replace(/\[Day \d\] /, '')}</h3>
-                  <p style={{ fontSize: '0.9rem', color: '#666' }}><strong>Difficulty:</strong> {task.difficulty_level}</p>
-                  <button
-                    onClick={() => handleStartSession(task)}
-                    className="btn btn-success"
-                    style={{ width: '100%', marginTop: '0.5rem' }}
+        {days.map((dayLabel, idx) => {
+          const dayNum = idx + 1;
+          const locked = isDayLocked(dayNum);
+          
+          return (
+            <div key={dayLabel} className="day-column" style={{ flex: 1, opacity: locked ? 0.6 : 1 }}>
+              <h2 style={{ borderBottom: '2px solid #333', paddingBottom: '0.5rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                {dayLabel}
+                {locked && <span title="Complete previous days to unlock" style={{ fontSize: '1.2rem' }}>🔒</span>}
+              </h2>
+              <div className="task-list">
+                {(groupedTasks[dayLabel] || []).map((task) => (
+                  <div 
+                    key={task.task_id} 
+                    className={`task-card ${locked ? 'task-locked' : ''} ${task.is_completed ? 'task-completed' : ''}`} 
+                    style={{ 
+                      marginBottom: '1rem', 
+                      border: task.is_completed ? '1px solid #4CAF50' : (locked ? '1px solid #ccc' : '1px solid #ddd'), 
+                      padding: '1rem', 
+                      borderRadius: '8px',
+                      backgroundColor: task.is_completed ? '#f9fff9' : (locked ? '#f5f5f5' : 'white'),
+                      position: 'relative'
+                    }}
                   >
-                    Start Task
-                  </button>
-                </div>
-              ))}
-              {(!groupedTasks[day] || groupedTasks[day].length === 0) && (
-                <p style={{ color: '#999', fontStyle: 'italic' }}>No tasks assigned.</p>
-              )}
+                    {task.is_completed && <span style={{ position: 'absolute', top: '0.5rem', right: '0.5rem', color: '#4CAF50', fontWeight: 'bold' }}>✓ Done</span>}
+                    <h3 style={{ marginTop: 0, fontSize: '1.1rem' }}>{task.task_title.replace(/\[Day \d\] /, '')}</h3>
+                    <p style={{ fontSize: '0.9rem', color: '#666' }}><strong>Difficulty:</strong> {task.difficulty_level}</p>
+                    <button
+                      onClick={() => handleStartSession(task)}
+                      className={`btn ${task.is_completed ? 'btn-secondary' : 'btn-success'}`}
+                      style={{ width: '100%', marginTop: '0.5rem' }}
+                      disabled={locked}
+                      title={locked ? 'Complete previous days first' : (task.is_completed ? 'Re-take session (optional)' : 'Start Task')}
+                    >
+                      {locked ? 'Locked' : (task.is_completed ? 'Redo Session' : 'Start Task')}
+                    </button>
+                  </div>
+                ))}
+                {(!groupedTasks[dayLabel] || groupedTasks[dayLabel].length === 0) && (
+                  <p style={{ color: '#999', fontStyle: 'italic' }}>No tasks assigned.</p>
+                )}
+              </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
 
       <button

@@ -401,8 +401,34 @@ def upload_keystrokes_beacon(
     return {"status": "success"}
 
 @app.get("/tasks")
-def get_tasks(db: Session = Depends(database.get_db)):
-    return db.query(models.ProgrammingTask).all()
+def get_tasks(
+    db: Session = Depends(database.get_db),
+    current_user: models.User = Depends(get_current_user)
+):
+    participant = db.query(models.Participant).filter(models.Participant.user_id == current_user.user_id).first()
+    tasks = db.query(models.ProgrammingTask).all()
+    
+    if not participant:
+        return [
+            {
+                **task.__dict__,
+                "is_completed": False
+            } for task in tasks if not task.__dict__.pop('_sa_instance_state', None)
+        ]
+        
+    completed_task_ids = db.query(models.Session.task_id).filter(
+        models.Session.participant_id == participant.participant_id,
+        models.Session.end_time != None
+    ).all()
+    completed_task_ids = [tid[0] for tid in completed_task_ids]
+
+    task_list = []
+    for task in tasks:
+        task_data = {c.name: getattr(task, c.name) for c in task.__table__.columns}
+        task_data["is_completed"] = task.task_id in completed_task_ids
+        task_list.append(task_data)
+        
+    return task_list
 
 @app.get("/participant/{user_id}")
 def get_participant(

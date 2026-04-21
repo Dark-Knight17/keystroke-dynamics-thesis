@@ -77,9 +77,23 @@ body {
   color: white;
 }
 
-.btn-success {
-  background-color: var(--success-color);
+.btn-secondary {
+  background-color: var(--secondary-color);
   color: white;
+}
+
+.task-completed {
+  background-color: #f9fff9;
+  border-color: #4CAF50;
+}
+
+.task-locked {
+  cursor: not-allowed;
+}
+
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .btn-link {
