@@ -1,5 +1,5 @@
 import uuid
-from sqlalchemy import Column, String, DateTime, ForeignKey, Integer, Float, Boolean, Index, Text
+from sqlalchemy import Column, String, DateTime, ForeignKey, Integer, Float, Boolean, Index, Text, BigInteger
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.sql import func
 from database import Base
@@ -26,6 +26,7 @@ class ProgrammingTask(Base):
     task_id = Column(Integer, primary_key=True, index=True)
     task_title = Column(String, nullable=False)
     description = Column(Text, nullable=False)
+    day = Column(Integer, default=1)
     difficulty_level = Column(String)
     expected_solution_length = Column(Integer)
 
@@ -37,6 +38,7 @@ class Session(Base):
     start_time = Column(DateTime(timezone=True), server_default=func.now())
     end_time = Column(DateTime(timezone=True))
     total_keystrokes = Column(Integer, default=0)
+    epoch_anchor = Column(BigInteger)
 
 class KeystrokeEvent(Base):
     __tablename__ = "keystroke_events"

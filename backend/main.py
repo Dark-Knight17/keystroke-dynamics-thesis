@@ -80,6 +80,7 @@ class SessionStart(BaseModel):
     device_type: str
     keyboard_layout: str
     os: str
+    epoch_anchor: int
 
 # Create tables
 models.Base.metadata.create_all(bind=database.engine)
@@ -210,6 +211,26 @@ def start_session(
         db.commit()
         db.refresh(participant)
     
+    # 1. Day-Locking Logic
+    requested_task = db.query(models.ProgrammingTask).filter(models.ProgrammingTask.task_id == session_in.task_id).first()
+    if not requested_task:
+        raise HTTPException(status_code=404, detail="Task not found")
+    
+    if requested_task.day > 1:
+        # Check if all tasks from previous days are completed
+        previous_tasks = db.query(models.ProgrammingTask).filter(models.ProgrammingTask.day < requested_task.day).all()
+        for task in previous_tasks:
+            completed = db.query(models.Session).filter(
+                models.Session.participant_id == participant.participant_id,
+                models.Session.task_id == task.task_id,
+                models.Session.end_time != None
+            ).first()
+            if not completed:
+                raise HTTPException(
+                    status_code=403, 
+                    detail=f"Study Progression Locked: You must complete all Day {task.day} tasks before starting Day {requested_task.day}."
+                )
+
     # Check for active, incomplete session for the requested task
     active_session = db.query(models.Session).filter(
         models.Session.participant_id == participant.participant_id,
@@ -218,11 +239,13 @@ def start_session(
     ).first()
     
     if active_session:
-        raise HTTPException(status_code=400, detail="You already have an active session for this task.")
+        # Reuse active session instead of erroring out to be more robust
+        return {"session_id": str(active_session.session_id)}
 
     new_session = models.Session(
         participant_id=participant.participant_id,
-        task_id=session_in.task_id
+        task_id=session_in.task_id,
+        epoch_anchor=session_in.epoch_anchor
     )
     db.add(new_session)
     db.commit()
