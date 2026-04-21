@@ -29,6 +29,7 @@ const App: React.FC = () => {
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [keystrokeCount, setKeystrokeCount] = useState(0);
+  const [currentEditorText, setCurrentEditorText] = useState('');
   const [participant, setParticipant] = useState<Participant | null>(null);
 
   const fetchData = async () => {
@@ -71,10 +72,13 @@ const App: React.FC = () => {
   const handleEndSession = async () => {
     if (!sessionId) return;
     try {
-      await api.post(`/session/end/${sessionId}`);
+      await api.post(`/session/complete/${sessionId}`, {
+        final_editor_text: currentEditorText
+      });
       setSessionId(null);
       setSelectedTask(null);
       setKeystrokeCount(0);
+      setCurrentEditorText('');
       alert('Session ended successfully. Thank you!');
       fetchData(); // Refresh completion status
     } catch (err) {
@@ -118,7 +122,10 @@ const App: React.FC = () => {
         <KeystrokeLogger 
           sessionId={sessionId} 
           taskId={selectedTask.task_id} 
-          onKeystrokeChange={(count) => setKeystrokeCount(count)}
+          onKeystrokeChange={(count, text) => {
+            setKeystrokeCount(count);
+            setCurrentEditorText(text);
+          }}
         />
       </div>
     );

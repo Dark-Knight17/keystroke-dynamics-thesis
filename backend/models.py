@@ -39,12 +39,14 @@ class Session(Base):
     end_time = Column(DateTime(timezone=True))
     total_keystrokes = Column(Integer, default=0)
     epoch_anchor = Column(BigInteger)
+    final_editor_text = Column(Text, nullable=True)
 
 class KeystrokeEvent(Base):
     __tablename__ = "keystroke_events"
     event_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     session_id = Column(UUID(as_uuid=True), ForeignKey("sessions.session_id"), nullable=False)
     key = Column(String, nullable=False)
+    physical_code = Column(String, nullable=True) # e.code from browser
     event_type = Column(String, nullable=False)
     timestamp = Column(Float, nullable=False)  # performance.now() high-res
     cursor_position = Column(Integer)

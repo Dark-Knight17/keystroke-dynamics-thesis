@@ -7,6 +7,7 @@ type Monaco = any;
 
 interface KeystrokeEvent {
   key: string;
+  physical_code: string;
   event_type: string;
   timestamp: number;
   cursor_position: number;
@@ -19,7 +20,7 @@ interface KeystrokeEvent {
 interface KeystrokeLoggerProps {
   sessionId: string;
   taskId: number;
-  onKeystrokeChange?: (count: number) => void;
+  onKeystrokeChange?: (count: number, currentText: string) => void;
 }
 
 const BATCH_TIME_MS = 2000;
@@ -112,11 +113,13 @@ const KeystrokeLogger: React.FC<KeystrokeLoggerProps> = ({ sessionId, taskId: _t
     });
 
     const logEvent = (e: any, type: string) => {
-      const key = e.browserEvent.key;
+      const browserEvent = e.browserEvent as KeyboardEvent;
+      const key = browserEvent.key;
+      const physical_code = browserEvent.code;
 
       if (type === 'keydown') {
         // Prevent auto-repeat events
-        if (e.browserEvent.repeat || pressedKeys.current.has(key)) {
+        if (browserEvent.repeat || pressedKeys.current.has(key)) {
           return;
         }
         pressedKeys.current.add(key);
@@ -124,19 +127,21 @@ const KeystrokeLogger: React.FC<KeystrokeLoggerProps> = ({ sessionId, taskId: _t
         pressedKeys.current.delete(key);
       }
 
-      const position = editor.getPosition();
-      const model = editor.getModel();
+      const position = editorRef.current?.getPosition();
+      const model = editorRef.current?.getModel();
       const cursorOffset = model ? model.getOffsetAt(position) : 0;
       const textLength = model ? model.getValueLength() : 0;
+      const currentText = model ? model.getValue() : '';
 
       eventSequence.current += 1;
       const event: KeystrokeEvent = {
         key: key,
+        physical_code: physical_code,
         event_type: type,
         timestamp: performance.now(),
         cursor_position: cursorOffset,
         text_length: textLength,
-        is_auto_repeat: e.browserEvent.repeat || false,
+        is_auto_repeat: browserEvent.repeat || false,
         is_modifier: MODIFIER_KEYS.has(key),
         event_sequence: eventSequence.current,
       };
@@ -145,9 +150,10 @@ const KeystrokeLogger: React.FC<KeystrokeLoggerProps> = ({ sessionId, taskId: _t
 
       if (type === 'keydown') {
         keystrokeCount.current += 1;
-        if (onKeystrokeChange) {
-          onKeystrokeChange(keystrokeCount.current);
-        }
+      }
+      
+      if (onKeystrokeChange) {
+        onKeystrokeChange(keystrokeCount.current, currentText);
       }
 
       if (eventBuffer.current.length >= BATCH_SIZE) {

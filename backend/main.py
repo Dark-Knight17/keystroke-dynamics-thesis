@@ -62,6 +62,7 @@ class Token(BaseModel):
 
 class KeystrokeEventCreate(BaseModel):
     key: str
+    physical_code: Optional[str] = None
     event_type: str
     timestamp: float
     cursor_position: int
@@ -81,6 +82,9 @@ class SessionStart(BaseModel):
     keyboard_layout: str
     os: str
     epoch_anchor: int
+
+class SessionComplete(BaseModel):
+    final_editor_text: str
 
 # Create tables
 models.Base.metadata.create_all(bind=database.engine)
@@ -253,15 +257,17 @@ def start_session(
     
     return {"session_id": str(new_session.session_id)}
 
-@app.post("/session/end/{session_id}")
-def end_session(
-    session_id: str, 
+@app.post("/session/complete/{session_id}")
+def complete_session(
+    session_id: str,
+    session_complete: SessionComplete,
     db: Session = Depends(database.get_db),
     current_user: models.User = Depends(get_current_user)
 ):
     # Verify session belongs to user
+    session_uuid = uuid.UUID(session_id)
     db_session = db.query(models.Session).join(models.Participant).filter(
-        models.Session.session_id == session_id,
+        models.Session.session_id == session_uuid,
         models.Participant.user_id == current_user.user_id
     ).first()
     
@@ -269,12 +275,23 @@ def end_session(
         raise HTTPException(status_code=404, detail="Session not found or unauthorized")
     
     db_session.end_time = datetime.now(timezone.utc)
+    db_session.final_editor_text = session_complete.final_editor_text
+    
     # total_keystrokes will be calculated from KeystrokeEvent count
-    count = db.query(models.KeystrokeEvent).filter(models.KeystrokeEvent.session_id == session_id).count()
+    count = db.query(models.KeystrokeEvent).filter(models.KeystrokeEvent.session_id == session_uuid).count()
     db_session.total_keystrokes = count
     db.commit()
     
-    return {"message": "Session ended", "total_keystrokes": count}
+    return {"message": "Session completed", "total_keystrokes": count}
+
+@app.post("/session/end/{session_id}")
+def end_session(
+    session_id: str, 
+    db: Session = Depends(database.get_db),
+    current_user: models.User = Depends(get_current_user)
+):
+    # Backward compatibility
+    return complete_session(session_id, SessionComplete(final_editor_text=""), db, current_user)
 
 @app.post("/keystrokes/batch")
 @limiter.limit("60/minute")
@@ -311,6 +328,7 @@ def upload_keystrokes(
         event = models.KeystrokeEvent(
             session_id=session_id,
             key=event_in.key,
+            physical_code=event_in.physical_code,
             event_type=event_in.event_type,
             timestamp=event_in.timestamp,
             cursor_position=event_in.cursor_position,
@@ -384,6 +402,7 @@ def upload_keystrokes_beacon(
         event = models.KeystrokeEvent(
             session_id=session_id,
             key=event_in.key,
+            physical_code=event_in.physical_code,
             event_type=event_in.event_type,
             timestamp=event_in.timestamp,
             cursor_position=event_in.cursor_position,
@@ -459,7 +478,7 @@ def export_sessions(
         # Write header
         writer.writerow([
             "participant_id", "session_id", "task_id", "event_sequence", 
-            "key", "event_type", "timestamp", "server_received_at", 
+            "key", "physical_code", "event_type", "timestamp", "server_received_at", 
             "cursor_position", "text_length", "is_auto_repeat", "is_modifier"
         ])
         yield output.getvalue()
@@ -473,6 +492,7 @@ def export_sessions(
             models.Session.task_id,
             models.KeystrokeEvent.event_sequence,
             models.KeystrokeEvent.key,
+            models.KeystrokeEvent.physical_code,
             models.KeystrokeEvent.event_type,
             models.KeystrokeEvent.timestamp,
             models.KeystrokeEvent.server_received_at,
