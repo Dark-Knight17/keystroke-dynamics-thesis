@@ -24,14 +24,14 @@ def seed_tasks():
         "description": "Write a function `reverse_string(text)` that takes a string and returns it reversed. Do not use Python's slice trick `[::-1]`; use a `for` or `while` loop. This requires reasoning and variable declaration.",
         "day": 1,
         "difficulty_level": "Medium",
-        "expected_solution_length": 200
+        "expected_solution_length": 100
       },
       {
         "task_title": "[Day 1] Syntax: Student Class",
         "description": "Create a class `Student`. Add an `__init__` method taking `self`, `name`, and `matric_number`. Add a method `get_details(self)` that returns an f-string with the student's information. Instantiate one student.",
         "day": 1,
         "difficulty_level": "Medium",
-        "expected_solution_length": 200
+        "expected_solution_length": 150
       },
       {
         "task_title": "[Day 1] Debugging: Infinite Loop",
@@ -52,14 +52,14 @@ def seed_tasks():
         "description": "Write a function `is_palindrome(word)` that returns True if the word reads the same forwards and backwards. Handle edge cases like empty strings. Use standard control flow.",
         "day": 2,
         "difficulty_level": "Medium",
-        "expected_solution_length": 200
+        "expected_solution_length": 120
       },
       {
         "task_title": "[Day 2] Syntax: List Comprehension",
         "description": "Given a list of dictionaries `data = [{'id': 1, 'score': 40}, {'id': 2, 'score': 80}]`, write a function that uses a list comprehension to return only the `id` of items where the `score` is 50 or higher.",
         "day": 2,
         "difficulty_level": "Medium",
-        "expected_solution_length": 200
+        "expected_solution_length": 100
       },
       {
         "task_title": "[Day 2] Debugging: Broken Logic",
@@ -80,7 +80,7 @@ def seed_tasks():
         "description": "Write a function `find_max(numbers)` that iterates through a list of numbers and returns the largest integer. Do not use the built-in `max()` function.",
         "day": 3,
         "difficulty_level": "Medium",
-        "expected_solution_length": 200
+        "expected_solution_length": 100
       },
       {
         "task_title": "[Day 3] Syntax: Try/Except File I/O",
