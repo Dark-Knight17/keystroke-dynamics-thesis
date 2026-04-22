@@ -56,9 +56,9 @@ const App: React.FC = () => {
         task_id: task.task_id,
         device_type: participant?.device_type || navigator.userAgent,
         keyboard_layout: participant?.keyboard_layout || 'Standard QWERTY',
-        os: participant?.os || navigator.platform,
-        epoch_anchor: Date.now()
-      });
+        os: participant?.os || navigator.platform
+        });
+
       setSessionId(response.data.session_id);
       setSelectedTask(task);
       setKeystrokeCount(0);

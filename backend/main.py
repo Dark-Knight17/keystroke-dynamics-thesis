@@ -71,17 +71,21 @@ class KeystrokeEventCreate(BaseModel):
     is_modifier: bool = False
     event_sequence: int
 
+class SyncInfo(BaseModel):
+    perf_now: float
+    date_now: float
+
 class KeystrokeBatch(BaseModel):
     session_id: str
     batch_id: str
     events: List[KeystrokeEventCreate]
+    sync: Optional[SyncInfo] = None
 
 class SessionStart(BaseModel):
     task_id: int
     device_type: str
     keyboard_layout: str
     os: str
-    epoch_anchor: int
 
 class SessionComplete(BaseModel):
     final_editor_text: str
@@ -248,8 +252,7 @@ def start_session(
 
     new_session = models.Session(
         participant_id=participant.participant_id,
-        task_id=session_in.task_id,
-        epoch_anchor=session_in.epoch_anchor
+        task_id=session_in.task_id
     )
     db.add(new_session)
     db.commit()
@@ -314,6 +317,10 @@ def upload_keystrokes(
 
     if not db_session:
         raise HTTPException(status_code=404, detail="Session not found or unauthorized")
+
+    # Update epoch_anchor if sync is provided
+    if batch.sync:
+        db_session.epoch_anchor = int(batch.sync.date_now)
 
     # Check for idempotency
     existing_batch = db.query(models.KeystrokeEvent).filter(
@@ -389,6 +396,14 @@ def upload_keystrokes_beacon(
         raise HTTPException(status_code=403, detail="Invalid beacon signature")
 
     session_id = uuid.UUID(batch.session_id)
+
+    # Fetch session to update epoch_anchor if sync is provided
+    db_session = db.query(models.Session).filter(models.Session.session_id == session_id).first()
+    if not db_session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    if batch.sync:
+        db_session.epoch_anchor = int(batch.sync.date_now)
     
     existing_batch = db.query(models.KeystrokeEvent).filter(
         models.KeystrokeEvent.batch_id == batch.batch_id

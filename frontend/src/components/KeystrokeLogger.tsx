@@ -33,6 +33,7 @@ const KeystrokeLogger: React.FC<KeystrokeLoggerProps> = ({ sessionId, taskId: _t
   const eventBuffer = useRef<KeystrokeEvent[]>([]);
   const keystrokeCount = useRef<number>(0);
   const eventSequence = useRef<number>(0);
+  const isFirstBatch = useRef<boolean>(true);
   const pressedKeys = useRef<Set<string>>(new Set());
   const beaconSignature = useRef<string | null>(null);
   const editorRef = useRef<any>(null);
@@ -44,11 +45,19 @@ const KeystrokeLogger: React.FC<KeystrokeLoggerProps> = ({ sessionId, taskId: _t
     const eventsToUpload = [...eventBuffer.current];
     eventBuffer.current = [];
     const batchId = uuidv4();
-    const payload = {
+    const payload: any = {
       session_id: sessionId,
       batch_id: batchId,
       events: eventsToUpload,
     };
+
+    if (isFirstBatch.current) {
+      payload.sync = {
+        perf_now: performance.now(),
+        date_now: Date.now(),
+      };
+      isFirstBatch.current = false;
+    }
 
     if (useBeacon && beaconSignature.current) {
       const baseUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000';
@@ -69,6 +78,7 @@ const KeystrokeLogger: React.FC<KeystrokeLoggerProps> = ({ sessionId, taskId: _t
 
   useEffect(() => {
     eventSequence.current = 0; // Reset sequence on new session
+    isFirstBatch.current = true; // Reset sync flag for new session
     
     // Fetch beacon signature
     const fetchSignature = async () => {
