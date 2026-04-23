@@ -23,7 +23,8 @@ def extract_features():
         e.event_sequence,
         t.expected_solution_length,
         s.total_keystrokes,
-        s.epoch_anchor
+        s.epoch_anchor,
+        s.final_editor_text
     FROM keystroke_events e
     JOIN sessions s ON e.session_id = s.session_id
     JOIN participants p ON s.participant_id = p.participant_id
@@ -53,8 +54,10 @@ def extract_features():
         participant_id = session_df['participant_id'].iloc[0]
         expected_len = session_df['expected_solution_length'].iloc[0]
         total_ks = session_df['total_keystrokes'].iloc[0]
+        final_text = session_df['final_editor_text'].iloc[0] or ""
         
-        if total_ks < (0.8 * expected_len):
+        # Dual Quality Gate: keystroke threshold (80%) OR final text length (50%)
+        if (total_ks < 0.8 * expected_len) or (len(final_text.strip()) < 0.5 * expected_len):
             continue
         
         # CPM calculation
