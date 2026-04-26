@@ -17,7 +17,7 @@ def seed_tasks():
         "description": "DO NOT SOLVE. Re-type the following exactly, paying strict attention to indentation:\n\ndef process_data(matrix):\n    results = []\n    for i in range(len(matrix)):\n        for j in range(len(matrix[i])):\n            if matrix[i][j] % 2 == 0 and matrix[i][j] != 0:\n                results.append({'x': i, 'y': j, 'val': matrix[i][j]})\n    return results",
         "day": 1,
         "difficulty_level": "Medium",
-        "expected_solution_length": 250
+        "expected_solution_length": 180
       },
       {
         "task_title": "[Day 1] Composition: String Reversal",
@@ -45,7 +45,7 @@ def seed_tasks():
         "description": "DO NOT SOLVE. Re-type the following exactly:\n\nimport requests\n\ndef fetch_user(user_id):\n    try:\n        response = requests.get(f'https://api.test.com/v1/users/{user_id}')\n        response.raise_for_status()\n        return response.json().get('profile')\n    except requests.exceptions.RequestException as e:\n        print(f'API Error: {e}')",
         "day": 2,
         "difficulty_level": "Medium",
-        "expected_solution_length": 250
+        "expected_solution_length": 180
       },
       {
         "task_title": "[Day 2] Composition: Palindrome Checker",
@@ -73,7 +73,7 @@ def seed_tasks():
         "description": "DO NOT SOLVE. Re-type the following exactly:\n\ndef group_by_role(users):\n    grouped = {}\n    for user in users:\n        role = user.get('role', 'guest')\n        if role not in grouped:\n            grouped[role] = []\n        grouped[role].append(user['name'])\n    return grouped",
         "day": 3,
         "difficulty_level": "Medium",
-        "expected_solution_length": 250
+        "expected_solution_length": 180
       },
       {
         "task_title": "[Day 3] Composition: Array Max Number",
