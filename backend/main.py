@@ -10,6 +10,7 @@ from fastapi import FastAPI, Depends, HTTPException, status, Response, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
+from sqlalchemy.exc import IntegrityError
 from passlib.context import CryptContext
 from pydantic import BaseModel
 from slowapi import Limiter, _rate_limit_exceeded_handler
@@ -167,6 +168,12 @@ def register(request: Request, user_in: UserCreate, db: Session = Depends(databa
         db.commit()
         
         return {"user_id": str(db_user.user_id), "message": "User registered successfully"}
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="An account with this matriculation number already exists. Please log in."
+        )
     except Exception as e:
         db.rollback()
         print(f"Registration Error: {str(e)}")
