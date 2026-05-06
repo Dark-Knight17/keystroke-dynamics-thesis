@@ -197,9 +197,9 @@ const App: React.FC = () => {
                     key={task.task_id} 
                     className={`task-card ${locked ? 'task-locked' : ''} ${task.is_completed ? 'task-completed' : ''}`} 
                   >
-                    {task.is_completed && <span style={{ position: 'absolute', top: '1.25rem', right: '1.25rem', color: 'var(--anthropic-green)', fontWeight: '600', fontSize: '0.85rem' }}>✓ COMPLETED</span>}
+                    {task.is_completed && <span style={{ position: 'absolute', top: '1.5rem', right: '1.5rem', color: 'var(--anthropic-green)', fontWeight: '700', fontSize: '0.75rem', letterSpacing: '0.05em' }}>✓ COMPLETED</span>}
                     <h3>{task.task_title.replace(/\[Day \d\] /, '')}</h3>
-                    <p style={{ fontSize: '0.95rem', marginBottom: '1.5rem' }}>
+                    <p style={{ fontSize: '0.95rem' }}>
                       <strong>Difficulty:</strong> {task.difficulty_level}
                     </p>
                     <button
