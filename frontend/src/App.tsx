@@ -197,10 +197,10 @@ const App: React.FC = () => {
                     key={task.task_id} 
                     className={`task-card ${locked ? 'task-locked' : ''} ${task.is_completed ? 'task-completed' : ''}`} 
                   >
-                    {task.is_completed && <span style={{ position: 'absolute', top: '1.5rem', right: '1.5rem', color: 'var(--anthropic-green)', fontWeight: '700', fontSize: '0.75rem', letterSpacing: '0.05em' }}>✓ COMPLETED</span>}
+                    {task.is_completed && <span className="task-status-badge">✓ COMPLETED</span>}
                     <h3>{task.task_title.replace(/\[Day \d\] /, '')}</h3>
-                    <p style={{ fontSize: '0.95rem' }}>
-                      <strong>Difficulty:</strong> {task.difficulty_level}
+                    <p>
+                      <strong>Difficulty</strong> {task.difficulty_level}
                     </p>
                     <button
                       onClick={() => handleStartSession(task)}

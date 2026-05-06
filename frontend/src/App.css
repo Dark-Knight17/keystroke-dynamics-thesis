@@ -103,60 +103,83 @@
 /* Dashboard Styles */
 .day-columns {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
-  gap: 3.5rem;
+  grid-template-columns: repeat(3, 1fr); /* Force exact 3-column symmetry */
+  gap: 3rem;
   margin-top: 3rem;
+  align-items: start;
 }
 
-.day-column {
-  background: transparent;
+@media (max-width: 900px) {
+  .day-columns {
+    grid-template-columns: 1fr;
+    gap: 2rem;
+  }
 }
 
 .day-column h2 {
-  font-size: 1.5rem;
-  margin-bottom: 1.5rem;
+  font-size: 1.35rem;
+  margin-bottom: 2rem;
+  padding-bottom: 0.75rem;
+  border-bottom: 1px solid var(--anthropic-light-gray);
   display: flex;
   align-items: center;
   gap: 0.75rem;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+}
+
+.task-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
 }
 
 .task-card {
   background: white;
   border: 1px solid var(--anthropic-light-gray);
-  padding: 2rem;
+  padding: 2.25rem 2rem;
   border-radius: 12px;
-  margin-bottom: 1.5rem;
-  transition: all 0.2s;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
   position: relative;
   display: flex;
   flex-direction: column;
+  min-height: 280px; /* Ensure vertical symmetry for similar tasks */
 }
 
 .task-card:hover:not(.task-locked) {
   border-color: var(--anthropic-mid-gray);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.03);
+  box-shadow: 0 8px 24px rgba(20, 20, 19, 0.04);
+  transform: translateY(-2px);
 }
 
-.task-completed {
-  background-color: #fafbf8;
-  border-color: var(--anthropic-green);
-}
-
-.task-locked {
-  background-color: #f7f7f7;
-  opacity: 0.7;
+.task-status-badge {
+  font-family: var(--font-heading);
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: var(--anthropic-green);
+  margin-bottom: 0.75rem;
+  display: block;
 }
 
 .task-card h3 {
-  font-size: 1.25rem;
+  font-size: 1.35rem;
   margin-top: 0;
-  margin-bottom: 0.75rem;
-  padding-right: 2rem; /* Space for the checkmark */
+  margin-bottom: 1rem;
+  line-height: 1.3;
 }
 
 .task-card p {
-  margin-bottom: 2rem;
+  margin-bottom: 2.5rem;
   flex-grow: 1;
+  font-size: 1rem;
+  color: var(--anthropic-dark);
+}
+
+.task-card strong {
+  color: var(--anthropic-mid-gray);
+  font-weight: 500;
+  margin-right: 0.5rem;
 }
 
 /* Logger/Session UI */
