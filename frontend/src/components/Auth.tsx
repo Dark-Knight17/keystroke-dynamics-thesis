@@ -65,89 +65,106 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
 
   return (
     <div className="auth-container">
-      <h2>{isRegistering ? 'Register Participant' : 'Login'}</h2>
+      <h2 style={{ fontSize: '1.75rem', marginBottom: '1.5rem', textAlign: 'center' }}>
+        {isRegistering ? 'Join Study' : 'Sign In'}
+      </h2>
       <form onSubmit={handleSubmit} className="auth-form">
-        <input
-          type="text"
-          placeholder="Matriculation Number"
-          value={matricNumber}
-          onChange={(e) => setMatricNumber(e.target.value)}
-          required
-          className="auth-input"
-        />
-        <input
-          type="password"
-          placeholder="Password"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          required
-          className="auth-input"
-        />
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+          <label style={{ fontSize: '0.9rem', fontWeight: '500', color: 'var(--anthropic-mid-gray)' }}>Matriculation Number</label>
+          <input
+            type="text"
+            placeholder="e.g. 12345678"
+            value={matricNumber}
+            onChange={(e) => setMatricNumber(e.target.value)}
+            required
+            className="auth-input"
+          />
+        </div>
+        
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+          <label style={{ fontSize: '0.9rem', fontWeight: '500', color: 'var(--anthropic-mid-gray)' }}>Password</label>
+          <input
+            type="password"
+            placeholder="••••••••"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            required
+            className="auth-input"
+          />
+        </div>
 
         {isRegistering && (
           <>
-            <select
-              value={physicalKeyboardType}
-              onChange={(e) => setPhysicalKeyboardType(e.target.value)}
-              required
-              className="auth-input"
-            >
-              <option value="" disabled>Select your keyboard type...</option>
-              <option value="Built-in Laptop Keyboard">Built-in Laptop Keyboard</option>
-              <option value="External Standard (Membrane) Keyboard">External Standard (Membrane) Keyboard</option>
-              <option value="External Mechanical Keyboard">External Mechanical Keyboard</option>
-            </select>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+              <label style={{ fontSize: '0.9rem', fontWeight: '500', color: 'var(--anthropic-mid-gray)' }}>Physical Keyboard Type</label>
+              <select
+                value={physicalKeyboardType}
+                onChange={(e) => setPhysicalKeyboardType(e.target.value)}
+                required
+                className="auth-input"
+              >
+                <option value="" disabled>Select your keyboard type...</option>
+                <option value="Built-in Laptop Keyboard">Built-in Laptop Keyboard</option>
+                <option value="External Standard (Membrane) Keyboard">External Standard (Membrane) Keyboard</option>
+                <option value="External Mechanical Keyboard">External Mechanical Keyboard</option>
+              </select>
+            </div>
 
-            <select
-              value={keyboardLayout}
-              onChange={(e) => setKeyboardLayout(e.target.value)}
-              required
-              className="auth-input"
-            >
-              <option value="QWERTY">QWERTY</option>
-              <option value="AZERTY">AZERTY</option>
-              <option value="Dvorak">Dvorak</option>
-              <option value="Colemak">Colemak</option>
-              <option value="Unknown">Unknown</option>
-            </select>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+              <label style={{ fontSize: '0.9rem', fontWeight: '500', color: 'var(--anthropic-mid-gray)' }}>Keyboard Layout</label>
+              <select
+                value={keyboardLayout}
+                onChange={(e) => setKeyboardLayout(e.target.value)}
+                required
+                className="auth-input"
+              >
+                <option value="QWERTY">QWERTY</option>
+                <option value="AZERTY">AZERTY</option>
+                <option value="Dvorak">Dvorak</option>
+                <option value="Colemak">Colemak</option>
+                <option value="Unknown">Unknown</option>
+              </select>
+            </div>
           </>
         )}
         
         {isRegistering && (
           <div className="consent-form">
-            <h3 style={{ marginTop: 0 }}>Consent Form</h3>
-            <p>
-              By participating in this study, you agree to have your keystroke dynamics collected
-              for research purposes. All data will be anonymized. Participation is voluntary.
+            <h3 style={{ fontSize: '1rem', marginTop: 0, marginBottom: '0.5rem' }}>Consent & Privacy</h3>
+            <p style={{ fontSize: '0.85rem', marginBottom: '1rem' }}>
+              By participating, you agree to have your keystroke dynamics collected
+              for research purposes. All data is strictly anonymized and linked only to a random ID.
             </p>
-            <label style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <label style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.75rem', fontSize: '0.9rem' }}>
               <input
                 type="checkbox"
                 checked={consented}
                 onChange={(e) => setConsented(e.target.checked)}
+                style={{ width: '18px', height: '18px', cursor: 'pointer' }}
               />
-              I consent to the terms of this study.
+              <span>I consent to these terms</span>
             </label>
           </div>
         )}
 
-        <button type="submit" className="btn btn-primary">
-          {isRegistering ? 'Register' : 'Login'}
+        <button type="submit" className="btn btn-primary" style={{ marginTop: '0.5rem' }}>
+          {isRegistering ? 'Create Account' : 'Sign In'}
         </button>
       </form>
       
-      <p style={{ marginTop: '1rem', textAlign: 'center' }}>
-        {isRegistering ? 'Already have an account?' : 'Need to register?'}
+      <div style={{ marginTop: '2rem', textAlign: 'center', fontSize: '0.95rem', color: 'var(--anthropic-mid-gray)' }}>
+        {isRegistering ? 'Already have an account?' : 'New to the study?'}
         {' '}
         <button
           onClick={() => setIsRegistering(!isRegistering)}
           className="btn-link"
+          style={{ fontWeight: '500' }}
         >
-          {isRegistering ? 'Login here' : 'Register here'}
+          {isRegistering ? 'Sign in instead' : 'Register here'}
         </button>
-      </p>
+      </div>
 
-      {error && <p className="error-msg">{error}</p>}
+      {error && <div className="error-msg">{error}</div>}
     </div>
   );
 };

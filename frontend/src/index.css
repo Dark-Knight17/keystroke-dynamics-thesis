@@ -1,13 +1,29 @@
-/* Reset and foundational styles moved to App.css or cleaned up here */
 :root {
-  font-family: Inter, system-ui, Avenir, Helvetica, Arial, sans-serif;
-  line-height: 1.5;
-  font-weight: 400;
-  color-scheme: light; /* Force light scheme for research platform consistency */
+  --anthropic-dark: #141413;
+  --anthropic-light: #faf9f5;
+  --anthropic-mid-gray: #b0aea5;
+  --anthropic-light-gray: #e8e6dc;
+  --anthropic-orange: #d97757;
+  --anthropic-blue: #6a9bcc;
+  --anthropic-green: #788c5d;
+  
+  --font-heading: 'Poppins', -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-body: 'Lora', Georgia, serif;
 }
 
 body {
   margin: 0;
   min-width: 320px;
   min-height: 100vh;
+  background-color: var(--anthropic-light);
+  color: var(--anthropic-dark);
+  font-family: var(--font-body);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+h1, h2, h3, h4, h5, h6 {
+  font-family: var(--font-heading);
+  font-weight: 600;
+  color: var(--anthropic-dark);
 }

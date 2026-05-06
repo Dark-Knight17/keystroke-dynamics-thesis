@@ -89,7 +89,12 @@ const App: React.FC = () => {
   if (!userId) {
     return (
       <div className="App">
-        <h1 style={{ textAlign: 'center' }}>Keystroke Dynamics Platform</h1>
+        <header style={{ textAlign: 'center', marginBottom: '3rem' }}>
+          <h1 style={{ fontSize: '2.5rem', marginBottom: '0.5rem' }}>Keystroke Dynamics</h1>
+          <p style={{ fontSize: '1.1rem', maxWidth: '600px', margin: '0 auto' }}>
+            A research platform for continuous authentication through programming patterns.
+          </p>
+        </header>
         <Auth onLogin={(id) => setUserId(id)} />
       </div>
     );
@@ -101,21 +106,44 @@ const App: React.FC = () => {
     return (
       <div className="App">
         <div className="task-header">
-          <div>
-            <h2>{selectedTask.task_title}</h2>
-            <p style={{ whiteSpace: 'pre-wrap' }}>{selectedTask.description}</p>
+          <div style={{ flex: 1 }}>
+            <h2 style={{ fontSize: '1.75rem', marginBottom: '1rem' }}>{selectedTask.task_title}</h2>
+            <p style={{ whiteSpace: 'pre-wrap', fontSize: '1.05rem' }}>{selectedTask.description}</p>
           </div>
-          <div style={{ textAlign: 'right' }}>
-            <p style={{ fontWeight: 'bold', color: isThresholdMet ? '#4CAF50' : '#f44336' }}>
-              Keystrokes: {keystrokeCount} / {selectedTask.expected_solution_length} required
-            </p>
+          <div style={{ textAlign: 'right', minWidth: '240px' }}>
+            <div style={{ marginBottom: '1.5rem' }}>
+              <p style={{ 
+                fontWeight: '600', 
+                color: isThresholdMet ? 'var(--anthropic-green)' : '#a63a2a',
+                fontSize: '1.1rem',
+                margin: 0
+              }}>
+                {isThresholdMet ? '✓ Minimum length met' : `Progress: ${keystrokeCount} / ${selectedTask.expected_solution_length}`}
+              </p>
+              <div style={{ 
+                height: '6px', 
+                width: '100%', 
+                backgroundColor: 'var(--anthropic-light-gray)', 
+                borderRadius: '3px',
+                marginTop: '0.5rem',
+                overflow: 'hidden'
+              }}>
+                <div style={{ 
+                  height: '100%', 
+                  width: `${Math.min(100, (keystrokeCount / selectedTask.expected_solution_length) * 100)}%`,
+                  backgroundColor: isThresholdMet ? 'var(--anthropic-green)' : 'var(--anthropic-orange)',
+                  transition: 'width 0.3s ease'
+                }} />
+              </div>
+            </div>
             <button 
               onClick={handleEndSession} 
-              className={`btn ${isThresholdMet ? 'btn-danger' : 'btn-secondary'}`}
+              className={`btn ${isThresholdMet ? 'btn-primary' : 'btn-secondary'}`}
               disabled={!isThresholdMet}
               title={!isThresholdMet ? `Minimum ${selectedTask.expected_solution_length} keystrokes required` : ''}
+              style={{ width: '100%' }}
             >
-              End Session
+              Submit Solution
             </button>
           </div>
         </div>
@@ -147,50 +175,45 @@ const App: React.FC = () => {
 
   return (
     <div className="App">
-      <h1>Research Participant Dashboard</h1>
-      <p>Please complete the tasks assigned for each day in order.</p>
+      <header style={{ marginBottom: '3rem' }}>
+        <h1 style={{ fontSize: '2.25rem' }}>Participant Dashboard</h1>
+        <p style={{ fontSize: '1.1rem' }}>Welcome back. Please complete the tasks assigned for each day in order.</p>
+      </header>
       
-      <div className="day-columns" style={{ display: 'flex', gap: '2rem', marginTop: '2rem' }}>
+      <div className="day-columns">
         {days.map((dayLabel, idx) => {
           const dayNum = idx + 1;
           const locked = isDayLocked(dayNum);
           
           return (
-            <div key={dayLabel} className="day-column" style={{ flex: 1, opacity: locked ? 0.6 : 1 }}>
-              <h2 style={{ borderBottom: '2px solid #333', paddingBottom: '0.5rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <div key={dayLabel} className={`day-column ${locked ? 'day-locked' : ''}`} style={{ opacity: locked ? 0.5 : 1 }}>
+              <h2>
                 {dayLabel}
-                {locked && <span title="Complete previous days to unlock" style={{ fontSize: '1.2rem' }}>🔒</span>}
+                {locked && <span title="Complete previous days to unlock" style={{ fontSize: '1.1rem', opacity: 0.6 }}>🔒</span>}
               </h2>
               <div className="task-list">
                 {(groupedTasks[dayLabel] || []).map((task) => (
                   <div 
                     key={task.task_id} 
                     className={`task-card ${locked ? 'task-locked' : ''} ${task.is_completed ? 'task-completed' : ''}`} 
-                    style={{ 
-                      marginBottom: '1rem', 
-                      border: task.is_completed ? '1px solid #4CAF50' : (locked ? '1px solid #ccc' : '1px solid #ddd'), 
-                      padding: '1rem', 
-                      borderRadius: '8px',
-                      backgroundColor: task.is_completed ? '#f9fff9' : (locked ? '#f5f5f5' : 'white'),
-                      position: 'relative'
-                    }}
                   >
-                    {task.is_completed && <span style={{ position: 'absolute', top: '0.5rem', right: '0.5rem', color: '#4CAF50', fontWeight: 'bold' }}>✓ Done</span>}
-                    <h3 style={{ marginTop: 0, fontSize: '1.1rem' }}>{task.task_title.replace(/\[Day \d\] /, '')}</h3>
-                    <p style={{ fontSize: '0.9rem', color: '#666' }}><strong>Difficulty:</strong> {task.difficulty_level}</p>
+                    {task.is_completed && <span style={{ position: 'absolute', top: '1.25rem', right: '1.25rem', color: 'var(--anthropic-green)', fontWeight: '600', fontSize: '0.85rem' }}>✓ COMPLETED</span>}
+                    <h3>{task.task_title.replace(/\[Day \d\] /, '')}</h3>
+                    <p style={{ fontSize: '0.95rem', marginBottom: '1.5rem' }}>
+                      <strong>Difficulty:</strong> {task.difficulty_level}
+                    </p>
                     <button
                       onClick={() => handleStartSession(task)}
-                      className={`btn ${task.is_completed ? 'btn-secondary' : 'btn-success'}`}
-                      style={{ width: '100%', marginTop: '0.5rem' }}
+                      className={`btn ${task.is_completed ? 'btn-secondary' : 'btn-primary'}`}
+                      style={{ width: '100%' }}
                       disabled={locked}
-                      title={locked ? 'Complete previous days first' : (task.is_completed ? 'Re-take session (optional)' : 'Start Task')}
                     >
                       {locked ? 'Locked' : (task.is_completed ? 'Redo Session' : 'Start Task')}
                     </button>
                   </div>
                 ))}
                 {(!groupedTasks[dayLabel] || groupedTasks[dayLabel].length === 0) && (
-                  <p style={{ color: '#999', fontStyle: 'italic' }}>No tasks assigned.</p>
+                  <p style={{ color: 'var(--anthropic-mid-gray)', fontStyle: 'italic' }}>No tasks assigned.</p>
                 )}
               </div>
             </div>
@@ -198,13 +221,14 @@ const App: React.FC = () => {
         })}
       </div>
 
-      <button
-        onClick={() => setUserId(null)}
-        className="btn btn-link"
-        style={{ marginTop: '2rem' }}
-      >
-        Logout
-      </button>
+      <footer style={{ marginTop: '5rem', borderTop: '1px solid var(--anthropic-light-gray)', paddingTop: '2rem', textAlign: 'center' }}>
+        <button
+          onClick={() => setUserId(null)}
+          className="btn btn-link"
+        >
+          Logout from session
+        </button>
+      </footer>
     </div>
   );
 };
