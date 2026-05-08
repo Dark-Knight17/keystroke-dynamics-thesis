@@ -231,3 +231,62 @@ p {
 strong {
   color: var(--anthropic-dark);
 }
+
+/* Skeleton Styles */
+.skeleton {
+  background: #eee;
+  background: linear-gradient(110deg, #ececec 8%, #f5f5f5 18%, #ececec 33%);
+  background-size: 200% 100%;
+  animation: 1.5s shine linear infinite;
+  border-radius: 4px;
+}
+
+@keyframes shine {
+  to {
+    background-position-x: -200%;
+  }
+}
+
+.skeleton-text {
+  height: 0.875rem;
+  margin-bottom: 0.75rem;
+  width: 100%;
+}
+
+.skeleton-title {
+  height: 1.5rem;
+  margin-bottom: 1.25rem;
+  width: 60%;
+}
+
+.skeleton-button {
+  height: 2.75rem;
+  width: 100%;
+  border-radius: 8px;
+  margin-top: auto;
+}
+
+.skeleton-card {
+  background: white;
+  border: 1px solid var(--anthropic-light-gray);
+  padding: 2.25rem 2rem;
+  border-radius: 12px;
+  display: flex;
+  flex-direction: column;
+  min-height: 280px;
+}
+
+/* Loading Spinner for buttons */
+.spinner {
+  width: 1.25rem;
+  height: 1.25rem;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  border-radius: 50%;
+  border-top-color: #fff;
+  animation: spin 0.8s linear infinite;
+  margin-right: 0.75rem;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}

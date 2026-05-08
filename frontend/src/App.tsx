@@ -31,8 +31,12 @@ const App: React.FC = () => {
   const [keystrokeCount, setKeystrokeCount] = useState(0);
   const [currentEditorText, setCurrentEditorText] = useState('');
   const [participant, setParticipant] = useState<Participant | null>(null);
+  const [isInitialLoading, setIsInitialLoading] = useState(false);
+  const [isSessionStarting, setIsSessionStarting] = useState(false);
+  const [isSessionEnding, setIsSessionEnding] = useState(false);
 
   const fetchData = async () => {
+    setIsInitialLoading(true);
     try {
       const tasksResponse = await api.get('/tasks');
       setTasks(tasksResponse.data);
@@ -41,6 +45,8 @@ const App: React.FC = () => {
       setParticipant(participantResponse.data);
     } catch (err) {
       console.error('Failed to fetch data:', err);
+    } finally {
+      setIsInitialLoading(false);
     }
   };
 
@@ -51,6 +57,7 @@ const App: React.FC = () => {
   }, [userId]);
 
   const handleStartSession = async (task: Task) => {
+    setIsSessionStarting(true);
     try {
       const response = await api.post('/session/start', {
         task_id: task.task_id,
@@ -66,11 +73,14 @@ const App: React.FC = () => {
       console.error('Failed to start session:', err);
       const msg = err.response?.data?.detail || 'Could not start session. Please try again.';
       alert(msg);
+    } finally {
+      setIsSessionStarting(false);
     }
   };
 
   const handleEndSession = async () => {
     if (!sessionId) return;
+    setIsSessionEnding(true);
     try {
       await api.post(`/session/complete/${sessionId}`, {
         final_editor_text: currentEditorText
@@ -83,8 +93,20 @@ const App: React.FC = () => {
       fetchData(); // Refresh completion status
     } catch (err) {
       console.error('Failed to end session:', err);
+    } finally {
+      setIsSessionEnding(false);
     }
   };
+
+  const TaskSkeleton = () => (
+    <div className="skeleton-card">
+      <div className="skeleton skeleton-title"></div>
+      <div className="skeleton skeleton-text"></div>
+      <div className="skeleton skeleton-text" style={{ width: '90%' }}></div>
+      <div className="skeleton skeleton-text" style={{ width: '40%', marginBottom: '2rem' }}></div>
+      <div className="skeleton skeleton-button"></div>
+    </div>
+  );
 
   if (!userId) {
     return (
@@ -139,10 +161,11 @@ const App: React.FC = () => {
             <button 
               onClick={handleEndSession} 
               className={`btn ${isThresholdMet ? 'btn-primary' : 'btn-secondary'}`}
-              disabled={!isThresholdMet}
+              disabled={!isThresholdMet || isSessionEnding}
               title={!isThresholdMet ? `Minimum ${selectedTask.expected_solution_length} keystrokes required` : ''}
               style={{ width: '100%' }}
             >
+              {isSessionEnding && <div className="spinner"></div>}
               Submit Solution
             </button>
           </div>
@@ -184,6 +207,7 @@ const App: React.FC = () => {
         {days.map((dayLabel, idx) => {
           const dayNum = idx + 1;
           const locked = isDayLocked(dayNum);
+          const dayTasks = groupedTasks[dayLabel] || [];
           
           return (
             <div key={dayLabel} className={`day-column ${locked ? 'day-locked' : ''}`} style={{ opacity: locked ? 0.5 : 1 }}>
@@ -192,28 +216,38 @@ const App: React.FC = () => {
                 {locked && <span title="Complete previous days to unlock" style={{ fontSize: '1.1rem', opacity: 0.6 }}>🔒</span>}
               </h2>
               <div className="task-list">
-                {(groupedTasks[dayLabel] || []).map((task) => (
-                  <div 
-                    key={task.task_id} 
-                    className={`task-card ${locked ? 'task-locked' : ''} ${task.is_completed ? 'task-completed' : ''}`} 
-                  >
-                    {task.is_completed && <span className="task-status-badge">✓ COMPLETED</span>}
-                    <h3>{task.task_title.replace(/\[Day \d\] /, '')}</h3>
-                    <p>
-                      <strong>Difficulty</strong> {task.difficulty_level}
-                    </p>
-                    <button
-                      onClick={() => handleStartSession(task)}
-                      className={`btn ${task.is_completed ? 'btn-secondary' : 'btn-primary'}`}
-                      style={{ width: '100%' }}
-                      disabled={locked}
-                    >
-                      {locked ? 'Locked' : (task.is_completed ? 'Redo Session' : 'Start Task')}
-                    </button>
-                  </div>
-                ))}
-                {(!groupedTasks[dayLabel] || groupedTasks[dayLabel].length === 0) && (
-                  <p style={{ color: 'var(--anthropic-mid-gray)', fontStyle: 'italic' }}>No tasks assigned.</p>
+                {isInitialLoading ? (
+                  <>
+                    <TaskSkeleton />
+                    <TaskSkeleton />
+                  </>
+                ) : (
+                  <>
+                    {dayTasks.map((task) => (
+                      <div 
+                        key={task.task_id} 
+                        className={`task-card ${locked ? 'task-locked' : ''} ${task.is_completed ? 'task-completed' : ''}`} 
+                      >
+                        {task.is_completed && <span className="task-status-badge">✓ COMPLETED</span>}
+                        <h3>{task.task_title.replace(/\[Day \d\] /, '')}</h3>
+                        <p>
+                          <strong>Difficulty</strong> {task.difficulty_level}
+                        </p>
+                        <button
+                          onClick={() => handleStartSession(task)}
+                          className={`btn ${task.is_completed ? 'btn-secondary' : 'btn-primary'}`}
+                          style={{ width: '100%' }}
+                          disabled={locked || isSessionStarting}
+                        >
+                          {isSessionStarting && <div className="spinner"></div>}
+                          {locked ? 'Locked' : (task.is_completed ? 'Redo Session' : 'Start Task')}
+                        </button>
+                      </div>
+                    ))}
+                    {dayTasks.length === 0 && (
+                      <p style={{ color: 'var(--anthropic-mid-gray)', fontStyle: 'italic' }}>No tasks assigned.</p>
+                    )}
+                  </>
                 )}
               </div>
             </div>

@@ -13,6 +13,7 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
   const [keyboardLayout, setKeyboardLayout] = useState('QWERTY');
   const [error, setError] = useState('');
   const [consented, setConsented] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
 
   const getOS = () => {
     const ua = navigator.userAgent;
@@ -27,14 +28,17 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
+    setIsLoading(true);
 
     if (isRegistering && !consented) {
       setError('You must consent to the study to register.');
+      setIsLoading(false);
       return;
     }
 
     if (isRegistering && !physicalKeyboardType) {
       setError('Please select your keyboard type.');
+      setIsLoading(false);
       return;
     }
 
@@ -60,6 +64,8 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
       }
     } catch (err: any) {
       setError(err.response?.data?.detail || 'An error occurred. Please try again.');
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -147,7 +153,13 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
           </div>
         )}
 
-        <button type="submit" className="btn btn-primary" style={{ marginTop: '0.5rem' }}>
+        <button 
+          type="submit" 
+          className="btn btn-primary" 
+          style={{ marginTop: '0.5rem' }} 
+          disabled={isLoading}
+        >
+          {isLoading && <div className="spinner"></div>}
           {isRegistering ? 'Create Account' : 'Sign In'}
         </button>
       </form>
