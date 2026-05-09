@@ -198,8 +198,8 @@ def login(request: Request, user_in: UserLogin, response: Response, db: Session 
         key="access_token",
         value=access_token,
         httponly=True,
-        secure=True,
-        samesite="none",
+        secure=False,  # Changed from True to support non-HTTPS research environments
+        samesite="lax",
         max_age=120 * 60
     )
     
