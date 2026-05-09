@@ -61,7 +61,8 @@ const KeystrokeLogger: React.FC<KeystrokeLoggerProps> = ({ sessionId, taskId: _t
 
     if (useBeacon && beaconSignature.current) {
       const baseUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000';
-      const url = `${baseUrl}/keystrokes/beacon?signature=${beaconSignature.current}`;
+      const token = localStorage.getItem('access_token');
+      const url = `${baseUrl}/keystrokes/beacon?signature=${beaconSignature.current}${token ? `&access_token=${token}` : ''}`;
       const blob = new Blob([JSON.stringify(payload)], { type: 'application/json' });
       navigator.sendBeacon(url, blob);
       return;

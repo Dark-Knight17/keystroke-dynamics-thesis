@@ -125,7 +125,20 @@ def verify_password(plain_password: str, hashed_password: str):
     return pwd_context.verify(pre_hash[:72], hashed_password)
 
 def get_current_user(request: Request, db: Session = Depends(database.get_db)):
-    token = request.cookies.get("access_token")
+    # Check Authorization header first
+    auth_header = request.headers.get("Authorization")
+    token = None
+    if auth_header and auth_header.startswith("Bearer "):
+        token = auth_header.split(" ")[1]
+    
+    # Fallback to query parameter (useful for beacons)
+    if not token:
+        token = request.query_params.get("access_token")
+
+    # Fallback to cookies for backward compatibility
+    if not token:
+        token = request.cookies.get("access_token")
+        
     if not token:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -204,7 +217,9 @@ def login(request: Request, user_in: UserLogin, response: Response, db: Session 
     )
     
     return {
-        "user_id": str(target_user.user_id)
+        "user_id": str(target_user.user_id),
+        "access_token": access_token,
+        "token_type": "bearer"
     }
 
 @app.post("/session/start")
@@ -389,7 +404,8 @@ def get_session_signature(
 def upload_keystrokes_beacon(
     batch: KeystrokeBatch, 
     signature: str,
-    db: Session = Depends(database.get_db)
+    db: Session = Depends(database.get_db),
+    current_user: models.User = Depends(get_current_user)
 ):
     """Special endpoint for navigator.sendBeacon with HMAC signature validation."""
     # Validate signature
