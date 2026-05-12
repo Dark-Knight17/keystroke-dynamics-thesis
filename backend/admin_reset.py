@@ -9,7 +9,6 @@ pwd_context = CryptContext(schemes=["pbkdf2_sha256"], deprecated="auto")
 def reset_user_password(matric_number):
     db = SessionLocal()
     
-    # Normalize the matric number exactly like our new login logic
     hashed_matric = hashlib.sha256(matric_number.encode()).hexdigest()
     
     user = db.query(User).filter(User.matric_hash == hashed_matric).first()
