@@ -163,8 +163,7 @@ def get_current_user(request: Request, db: Session = Depends(database.get_db)):
 def register(request: Request, user_in: UserCreate, db: Session = Depends(database.get_db)):
     try:
         # Check if user already exists based on matric_hash
-        normalized_matric = user_in.matric_number.strip().upper()
-        matric_hash = get_stable_hash(normalized_matric)
+        matric_hash = get_stable_hash(user_in.matric_number)
         password_hash = get_password_hash(user_in.password)
         
         db_user = models.User(matric_hash=matric_hash, password_hash=password_hash)
@@ -196,8 +195,7 @@ def register(request: Request, user_in: UserCreate, db: Session = Depends(databa
 @app.post("/login")
 @limiter.limit("10/minute")
 def login(request: Request, user_in: UserLogin, response: Response, db: Session = Depends(database.get_db)):
-    normalized_matric = user_in.matric_number.strip().upper()
-    search_matric_hash = get_stable_hash(normalized_matric)
+    search_matric_hash = get_stable_hash(user_in.matric_number)
     target_user = db.query(models.User).filter(models.User.matric_hash == search_matric_hash).first()
     
     if not target_user or not verify_password(user_in.password, target_user.password_hash):
