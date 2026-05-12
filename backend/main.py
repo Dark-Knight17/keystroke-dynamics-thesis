@@ -247,7 +247,7 @@ def start_session(
         raise HTTPException(status_code=404, detail="Task not found")
     
     if requested_task.day > 1:
-        # Check if all tasks from previous days are completed
+        # 1. Check if all tasks from previous days are completed
         previous_tasks = db.query(models.ProgrammingTask).filter(models.ProgrammingTask.day < requested_task.day).all()
         for task in previous_tasks:
             completed = db.query(models.Session).filter(
@@ -259,6 +259,22 @@ def start_session(
                 raise HTTPException(
                     status_code=403, 
                     detail=f"Study Progression Locked: You must complete all Day {task.day} tasks before starting Day {requested_task.day}."
+                )
+
+        # 2. Calendar Day Lock: Current server date must be strictly greater than last completion date
+        last_session = db.query(models.Session).join(models.ProgrammingTask).filter(
+            models.Session.participant_id == participant.participant_id,
+            models.ProgrammingTask.day < requested_task.day,
+            models.Session.end_time != None
+        ).order_by(models.Session.end_time.desc()).first()
+
+        if last_session:
+            current_date = datetime.now(timezone.utc).date()
+            last_completion_date = last_session.end_time.date()
+            if current_date <= last_completion_date:
+                raise HTTPException(
+                    status_code=403,
+                    detail=f"Study Progression Locked: Day {requested_task.day} tasks will be available tomorrow."
                 )
 
     # Check for active, incomplete session for the requested task
