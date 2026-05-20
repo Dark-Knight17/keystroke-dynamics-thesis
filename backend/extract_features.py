@@ -36,6 +36,16 @@ def extract_features():
     """
     df = pd.read_sql(query, engine)
     
+    count_query = """
+        SELECT p.participant_id, COUNT(*) as db_session_count
+        FROM sessions s
+        JOIN participants p ON s.participant_id = p.participant_id
+        WHERE s.end_time IS NOT NULL
+        GROUP BY p.participant_id
+    """
+    counts_df = pd.read_sql(count_query, engine)
+    df = df.merge(counts_df, on='participant_id', how='left')
+    
     if df.empty:
         print("No data found for feature extraction.")
         return
