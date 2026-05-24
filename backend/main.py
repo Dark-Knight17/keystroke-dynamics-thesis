@@ -18,6 +18,8 @@ from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
 import csv
 import io
+from datetime import datetime
+from auth_model import predict as auth_predict
 
 import models, database
 
@@ -516,6 +518,42 @@ def get_participant(
     if not participant:
         raise HTTPException(status_code=404, detail="Participant not found")
     return participant
+
+@app.post("/authenticate/verify/{session_id}")
+def verify_authentication(
+    session_id: uuid.UUID,
+    request: models.AuthVerifyRequest,
+    db: Session = Depends(database.get_db),
+    current_user: models.User = Depends(get_current_user)
+):
+    """
+    Verifies the keystroke dynamics of a session against the trained Transformer model.
+    """
+    db_session = db.query(models.Session).filter(models.Session.session_id == session_id).first()
+    if not db_session:
+        raise HTTPException(status_code=404, detail="Session not found")
+    
+    participant_id = db_session.participant_id
+    
+    try:
+        result = auth_predict(
+            participant_id=str(participant_id),
+            events=[e.model_dump() for e in request.events]
+        )
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="Authentication model not found for this participant")
+    except Exception as e:
+        print(f"Authentication Service Error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Authentication service error")
+    
+    return {
+        "session_id": str(session_id),
+        "participant_id": str(participant_id),
+        "score": result.get("score"),
+        "verdict": result.get("verdict"),
+        "keystrokes": result.get("keystrokes"),
+        "timestamp": datetime.utcnow().isoformat()
+    }
 
 @app.get("/export/sessions")
 def export_sessions(
