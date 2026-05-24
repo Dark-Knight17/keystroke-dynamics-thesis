@@ -1,9 +1,7 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
-import Editor from '@monaco-editor/react';
+import Editor, { Monaco, OnMount } from '@monaco-editor/react';
 import { v4 as uuidv4 } from 'uuid';
 import api from '../api';
-
-type Monaco = any;
 
 interface KeystrokeEvent {
   key: string;
@@ -23,12 +21,33 @@ interface KeystrokeLoggerProps {
   onKeystrokeChange?: (count: number, currentText: string) => void;
 }
 
+interface SyncInfo {
+  perf_now: number;
+  date_now: number;
+}
+
+interface KeystrokeBatchPayload {
+  session_id: string;
+  batch_id: string;
+  events: KeystrokeEvent[];
+  sync?: SyncInfo;
+}
+
+interface IMonacoKeyboardEvent {
+  browserEvent: KeyboardEvent;
+  keyCode: number;
+  ctrlKey: boolean;
+  metaKey: boolean;
+  preventDefault(): void;
+  stopPropagation(): void;
+}
+
 const BATCH_TIME_MS = 2000;
 const BATCH_SIZE = 50;
 
 const MODIFIER_KEYS = new Set(['Shift', 'Control', 'Alt', 'Meta', 'CapsLock']);
 
-const KeystrokeLogger: React.FC<KeystrokeLoggerProps> = ({ sessionId, taskId: _taskId, onKeystrokeChange }) => {
+const KeystrokeLogger: React.FC<KeystrokeLoggerProps> = ({ sessionId, onKeystrokeChange }) => {
   const [code, setCode] = useState('# Start typing your solution here...');
   const [authStatus, setAuthStatus] = useState<{
     verdict: 'genuine' | 'impostor' | 'uncertain' | 'insufficient_data' | 'model_not_found' | 'idle';
@@ -36,22 +55,29 @@ const KeystrokeLogger: React.FC<KeystrokeLoggerProps> = ({ sessionId, taskId: _t
     keystrokes: number;
   }>({ verdict: 'idle', score: null, keystrokes: 0 });
 
+  // Pattern to reset state when prop changes to avoid synchronous setState in useEffect
+  const [prevSessionId, setPrevSessionId] = useState(sessionId);
+  if (sessionId !== prevSessionId) {
+    setPrevSessionId(sessionId);
+    setAuthStatus({ verdict: 'idle', score: null, keystrokes: 0 });
+  }
+
   const eventBuffer = useRef<KeystrokeEvent[]>([]);
   const keystrokeCount = useRef<number>(0);
   const eventSequence = useRef<number>(0);
   const isFirstBatch = useRef<boolean>(true);
   const pressedKeys = useRef<Set<string>>(new Set());
   const beaconSignature = useRef<string | null>(null);
-  const editorRef = useRef<any>(null);
+  const editorRef = useRef<Parameters<OnMount>[0] | null>(null);
   const monacoRef = useRef<Monaco | null>(null);
 
-  const flushBuffer = async (useBeacon = false) => {
+  const flushBuffer = useCallback(async (useBeacon = false) => {
     if (eventBuffer.current.length === 0) return;
 
     const eventsToUpload = [...eventBuffer.current];
     eventBuffer.current = [];
     const batchId = uuidv4();
-    const payload: any = {
+    const payload: KeystrokeBatchPayload = {
       session_id: sessionId,
       batch_id: batchId,
       events: eventsToUpload,
@@ -81,7 +107,7 @@ const KeystrokeLogger: React.FC<KeystrokeLoggerProps> = ({ sessionId, taskId: _t
       // Put back at the beginning of buffer
       eventBuffer.current = [...eventsToUpload, ...eventBuffer.current];
     }
-  };
+  }, [sessionId]);
 
   const runAuthVerification = useCallback(async () => {
     const buffer = eventBuffer.current;
@@ -102,7 +128,6 @@ const KeystrokeLogger: React.FC<KeystrokeLoggerProps> = ({ sessionId, taskId: _t
   useEffect(() => {
     eventSequence.current = 0; // Reset sequence on new session
     isFirstBatch.current = true; // Reset sync flag for new session
-    setAuthStatus({ verdict: 'idle', score: null, keystrokes: 0 }); // Reset auth status
     
     // Fetch beacon signature
     const fetchSignature = async () => {
@@ -138,21 +163,21 @@ const KeystrokeLogger: React.FC<KeystrokeLoggerProps> = ({ sessionId, taskId: _t
       clearInterval(authInterval);
       flushBuffer(true); // Final flush on unmount
     };
-  }, [sessionId, runAuthVerification]);
+  }, [sessionId, runAuthVerification, flushBuffer]);
 
-  const handleEditorDidMount = (editor: any, monaco: Monaco) => {
+  const handleEditorDidMount: OnMount = (editor, monaco) => {
     editorRef.current = editor;
     monacoRef.current = monaco;
 
-    editor.onKeyDown((e: any) => {
+    editor.onKeyDown((e: IMonacoKeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && (e.keyCode === monaco.KeyCode.KeyC || e.keyCode === monaco.KeyCode.KeyV)) {
         e.preventDefault();
         e.stopPropagation();
       }
     });
 
-    const logEvent = (e: any, type: string) => {
-      const browserEvent = e.browserEvent as KeyboardEvent;
+    const logEvent = (e: IMonacoKeyboardEvent, type: 'keydown' | 'keyup') => {
+      const browserEvent = e.browserEvent;
       const key = browserEvent.key;
       const physical_code = browserEvent.code;
 
@@ -168,7 +193,7 @@ const KeystrokeLogger: React.FC<KeystrokeLoggerProps> = ({ sessionId, taskId: _t
 
       const position = editorRef.current?.getPosition();
       const model = editorRef.current?.getModel();
-      const cursorOffset = model ? model.getOffsetAt(position) : 0;
+      const cursorOffset = position && model ? model.getOffsetAt(position) : 0;
       const textLength = model ? model.getValueLength() : 0;
       const currentText = model ? model.getValue() : '';
 
@@ -200,8 +225,8 @@ const KeystrokeLogger: React.FC<KeystrokeLoggerProps> = ({ sessionId, taskId: _t
       }
     };
 
-    editor.onKeyDown((e: any) => logEvent(e, 'keydown'));
-    editor.onKeyUp((e: any) => logEvent(e, 'keyup'));
+    editor.onKeyDown((e: IMonacoKeyboardEvent) => logEvent(e, 'keydown'));
+    editor.onKeyUp((e: IMonacoKeyboardEvent) => logEvent(e, 'keyup'));
   };
 
   const getStatusConfig = () => {
