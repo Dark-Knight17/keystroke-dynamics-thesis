@@ -18,7 +18,7 @@ from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
 import csv
 import io
-from datetime import datetime
+from datetime import datetime, timezone
 from auth_model import predict as auth_predict
 
 import models, database
@@ -552,7 +552,7 @@ def verify_authentication(
         "score": result.get("score"),
         "verdict": result.get("verdict"),
         "keystrokes": result.get("keystrokes"),
-        "timestamp": datetime.utcnow().isoformat()
+        "timestamp": datetime.now(timezone.utc).isoformat()
     }
 
 @app.get("/export/sessions")
