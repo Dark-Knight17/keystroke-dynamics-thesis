@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState, useCallback } from 'react';
 import Editor from '@monaco-editor/react';
 import { v4 as uuidv4 } from 'uuid';
 import api from '../api';
@@ -30,6 +30,12 @@ const MODIFIER_KEYS = new Set(['Shift', 'Control', 'Alt', 'Meta', 'CapsLock']);
 
 const KeystrokeLogger: React.FC<KeystrokeLoggerProps> = ({ sessionId, taskId: _taskId, onKeystrokeChange }) => {
   const [code, setCode] = useState('# Start typing your solution here...');
+  const [authStatus, setAuthStatus] = useState<{
+    verdict: 'genuine' | 'impostor' | 'uncertain' | 'insufficient_data' | 'model_not_found' | 'idle';
+    score: number | null;
+    keystrokes: number;
+  }>({ verdict: 'idle', score: null, keystrokes: 0 });
+
   const eventBuffer = useRef<KeystrokeEvent[]>([]);
   const keystrokeCount = useRef<number>(0);
   const eventSequence = useRef<number>(0);
@@ -77,9 +83,26 @@ const KeystrokeLogger: React.FC<KeystrokeLoggerProps> = ({ sessionId, taskId: _t
     }
   };
 
+  const runAuthVerification = useCallback(async () => {
+    const buffer = eventBuffer.current;
+    if (buffer.length < 10) {
+      setAuthStatus(prev => ({ ...prev, verdict: 'insufficient_data' }));
+      return;
+    }
+
+    try {
+      const response = await api.post(`/authenticate/verify/${sessionId}`, { events: buffer });
+      const { verdict, score, keystrokes } = response.data;
+      setAuthStatus({ verdict, score, keystrokes });
+    } catch (error) {
+      console.error('Authentication verification failed:', error);
+    }
+  }, [sessionId]);
+
   useEffect(() => {
     eventSequence.current = 0; // Reset sequence on new session
     isFirstBatch.current = true; // Reset sync flag for new session
+    setAuthStatus({ verdict: 'idle', score: null, keystrokes: 0 }); // Reset auth status
     
     // Fetch beacon signature
     const fetchSignature = async () => {
@@ -105,12 +128,17 @@ const KeystrokeLogger: React.FC<KeystrokeLoggerProps> = ({ sessionId, taskId: _t
       flushBuffer();
     }, BATCH_TIME_MS);
 
+    const authInterval = setInterval(() => {
+      runAuthVerification();
+    }, 30000);
+
     return () => {
       document.removeEventListener('visibilitychange', handleVisibilityChange);
       clearInterval(interval);
+      clearInterval(authInterval);
       flushBuffer(true); // Final flush on unmount
     };
-  }, [sessionId]);
+  }, [sessionId, runAuthVerification]);
 
   const handleEditorDidMount = (editor: any, monaco: Monaco) => {
     editorRef.current = editor;
@@ -176,8 +204,56 @@ const KeystrokeLogger: React.FC<KeystrokeLoggerProps> = ({ sessionId, taskId: _t
     editor.onKeyUp((e: any) => logEvent(e, 'keyup'));
   };
 
+  const getStatusConfig = () => {
+    switch (authStatus.verdict) {
+      case 'genuine':
+        return { icon: '🛡', label: 'Verified', bgColor: '#e6f4ea', textColor: '#137333' };
+      case 'impostor':
+        return { icon: '🚫', label: 'Flagged', bgColor: '#fce8e6', textColor: '#c5221f' };
+      case 'uncertain':
+        return { icon: '⚠', label: 'Uncertain', bgColor: '#fef7e0', textColor: '#b06000' };
+      case 'insufficient_data':
+        return { icon: '⚠', label: 'Checking...', bgColor: '#fef7e0', textColor: '#b06000' };
+      case 'model_not_found':
+        return { icon: '🔒', label: 'Unavailable', bgColor: '#f1f3f4', textColor: '#5f6368' };
+      default:
+        return { icon: '🔒', label: 'Monitoring', bgColor: '#f1f3f4', textColor: '#5f6368' };
+    }
+  };
+
+  const { icon, label, bgColor, textColor } = getStatusConfig();
+
   return (
-    <div className="keystroke-logger-container">
+    <div className="keystroke-logger-container" style={{ position: 'relative' }}>
+      {sessionId && (
+        <div style={{
+          position: 'absolute',
+          top: '8px',
+          right: '8px',
+          zIndex: 10,
+          width: '120px',
+          padding: '8px',
+          borderRadius: '8px',
+          fontSize: '12px',
+          backgroundColor: bgColor,
+          color: textColor,
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          boxShadow: '0 1px 3px rgba(0,0,0,0.12)',
+          transition: 'all 0.3s ease'
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '4px', fontWeight: 'bold' }}>
+            <span>{icon}</span>
+            <span>{label}</span>
+          </div>
+          {authStatus.score !== null && (
+            <div style={{ fontSize: '10px', marginTop: '2px', opacity: 0.8 }}>
+              {Math.round(authStatus.score * 100)}% Match
+            </div>
+          )}
+        </div>
+      )}
       <Editor
         height="60vh"
         defaultLanguage="python"
