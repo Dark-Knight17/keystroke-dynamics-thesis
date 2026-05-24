@@ -51,9 +51,9 @@ def preprocess_events(events: list[dict]) -> tuple[np.ndarray, np.ndarray]:
         return np.zeros((1, MAX_TIMESTEPS, 3), dtype='float32'), np.zeros((1, MAX_TIMESTEPS), dtype='bool')
 
     # 3. Compute flight_time
-    timestamps = [e['timestamp'] for e in keydown_events]
+    timestamps = np.array([e['timestamp'] for e in keydown_events])
     flight_times = np.diff(timestamps, prepend=timestamps[0])
-    flight_times = np.clip(flight_times, 0, 2000)
+    flight_times = np.clip(flight_times, 0, 2000).astype('float32')  # Cap at 2000ms to reduce outlier impact
 
     # 4. Encode physical_code
     encoded_codes = [VOCAB.get(e.get('physical_code'), 0) for e in keydown_events]
