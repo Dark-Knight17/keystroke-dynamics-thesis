@@ -59,3 +59,27 @@ class KeystrokeEvent(Base):
 
 # Index session_id for fast retrieval
 Index("ix_keystroke_events_session_id", KeystrokeEvent.session_id)
+
+# ── Authentication Schemas ──
+from pydantic import BaseModel, ConfigDict
+from typing import List
+
+class KeystrokeEventPayload(BaseModel):
+    """
+    Represents a single keystroke event sent from the frontend.
+    """
+    physical_code: str
+    timestamp: float
+    event_type: str
+    text_length: int
+    event_sequence: int
+
+    model_config = ConfigDict(from_attributes=True)
+
+class AuthVerifyRequest(BaseModel):
+    """
+    Represents the full request body for the verification endpoint.
+    """
+    events: List[KeystrokeEventPayload]
+
+    model_config = ConfigDict(from_attributes=True)
