@@ -31,12 +31,29 @@ const App: React.FC = () => {
   const [keystrokeCount, setKeystrokeCount] = useState(0);
   const [currentEditorText, setCurrentEditorText] = useState('');
   const [participant, setParticipant] = useState<Participant | null>(null);
-  const [isInitialLoading, setIsInitialLoading] = useState(false);
+  const [isInitialLoading, setIsInitialLoading] = useState(true);
   const [isSessionStarting, setIsSessionStarting] = useState(false);
   const [isSessionEnding, setIsSessionEnding] = useState(false);
 
+  useEffect(() => {
+    const checkAuth = async () => {
+      const token = localStorage.getItem('access_token');
+      if (token) {
+        try {
+          const response = await api.get('/me');
+          setUserId(response.data.user_id);
+        } catch (err) {
+          console.error('Session restoration failed:', err);
+          localStorage.removeItem('access_token');
+        }
+      }
+      setIsInitialLoading(false);
+    };
+    checkAuth();
+  }, []);
+
   const fetchData = async () => {
-    setIsInitialLoading(true);
+    if (!userId) return;
     try {
       const tasksResponse = await api.get('/tasks');
       setTasks(tasksResponse.data);
@@ -45,8 +62,6 @@ const App: React.FC = () => {
       setParticipant(participantResponse.data);
     } catch (err) {
       console.error('Failed to fetch data:', err);
-    } finally {
-      setIsInitialLoading(false);
     }
   };
 
@@ -55,6 +70,13 @@ const App: React.FC = () => {
       fetchData();
     }
   }, [userId]);
+
+  const handleLogout = () => {
+    localStorage.removeItem('access_token');
+    setUserId(null);
+    setSessionId(null);
+    setSelectedTask(null);
+  };
 
   const handleStartSession = async (task: Task) => {
     setIsSessionStarting(true);
@@ -107,6 +129,14 @@ const App: React.FC = () => {
       <div className="skeleton skeleton-button"></div>
     </div>
   );
+
+  if (isInitialLoading) {
+    return (
+      <div className="App" style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}>
+        <div className="spinner" style={{ width: '40px', height: '40px' }}></div>
+      </div>
+    );
+  }
 
   if (!userId) {
     return (
@@ -257,7 +287,7 @@ const App: React.FC = () => {
 
       <footer style={{ marginTop: '5rem', borderTop: '1px solid var(--anthropic-light-gray)', paddingTop: '2rem', textAlign: 'center' }}>
         <button
-          onClick={() => setUserId(null)}
+          onClick={handleLogout}
           className="btn btn-link"
         >
           Logout from session
