@@ -10,3 +10,4 @@ passlib[bcrypt]
 bcrypt
 pandas
 numpy
+tensorflow
