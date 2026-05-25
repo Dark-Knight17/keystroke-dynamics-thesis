@@ -156,58 +156,66 @@ const App: React.FC = () => {
     const isThresholdMet = keystrokeCount >= selectedTask.expected_solution_length;
     
     return (
-      <div className="App">
-        <div className="task-header">
-          <div style={{ flex: 1 }}>
-            <h2 style={{ fontSize: '1.75rem', marginBottom: '1rem' }}>{selectedTask.task_title}</h2>
-            <p style={{ whiteSpace: 'pre-wrap', fontSize: '1.05rem' }}>{selectedTask.description}</p>
-          </div>
-          <div style={{ textAlign: 'right', minWidth: '240px' }}>
-            <div style={{ marginBottom: '1.5rem' }}>
-              <p style={{ 
-                fontWeight: '600', 
-                color: isThresholdMet ? 'var(--anthropic-green)' : '#a63a2a',
-                fontSize: '1.1rem',
-                margin: 0
-              }}>
-                {isThresholdMet ? '✓ Minimum length met' : `Progress: ${keystrokeCount} / ${selectedTask.expected_solution_length}`}
-              </p>
-              <div style={{ 
-                height: '6px', 
-                width: '100%', 
-                backgroundColor: 'var(--anthropic-light-gray)', 
-                borderRadius: '3px',
-                marginTop: '0.5rem',
-                overflow: 'hidden'
-              }}>
+      <div className="App" style={{ maxWidth: '1400px' }}>
+        <div className="task-workspace">
+          <aside className="task-sidebar">
+            <h2 style={{ fontSize: '1.5rem', marginBottom: '1rem', borderBottom: '1px solid var(--anthropic-light-gray)', paddingBottom: '0.5rem' }}>
+              {selectedTask.task_title}
+            </h2>
+            <p style={{ whiteSpace: 'pre-wrap', fontSize: '0.95rem', flex: 1, marginBottom: '2rem' }}>
+              {selectedTask.description}
+            </p>
+            
+            <div style={{ marginTop: 'auto' }}>
+              <div style={{ marginBottom: '1.25rem' }}>
+                <p style={{ 
+                  fontWeight: '600', 
+                  color: isThresholdMet ? 'var(--anthropic-green)' : '#a63a2a',
+                  fontSize: '0.9rem',
+                  margin: 0
+                }}>
+                  {isThresholdMet ? '✓ Minimum length met' : `Progress: ${keystrokeCount} / ${selectedTask.expected_solution_length}`}
+                </p>
                 <div style={{ 
-                  height: '100%', 
-                  width: `${Math.min(100, (keystrokeCount / selectedTask.expected_solution_length) * 100)}%`,
-                  backgroundColor: isThresholdMet ? 'var(--anthropic-green)' : 'var(--anthropic-orange)',
-                  transition: 'width 0.3s ease'
-                }} />
+                  height: '6px', 
+                  width: '100%', 
+                  backgroundColor: 'var(--anthropic-light-gray)', 
+                  borderRadius: '3px',
+                  marginTop: '0.5rem',
+                  overflow: 'hidden'
+                }}>
+                  <div style={{ 
+                    height: '100%', 
+                    width: `${Math.min(100, (keystrokeCount / selectedTask.expected_solution_length) * 100)}%`,
+                    backgroundColor: isThresholdMet ? 'var(--anthropic-green)' : 'var(--anthropic-orange)',
+                    transition: 'width 0.3s ease'
+                  }} />
+                </div>
               </div>
+              <button 
+                onClick={handleEndSession} 
+                className={`btn ${isThresholdMet ? 'btn-primary' : 'btn-secondary'}`}
+                disabled={!isThresholdMet || isSessionEnding}
+                title={!isThresholdMet ? `Minimum ${selectedTask.expected_solution_length} keystrokes required` : ''}
+                style={{ width: '100%' }}
+              >
+                {isSessionEnding && <div className="spinner"></div>}
+                Submit Solution
+              </button>
             </div>
-            <button 
-              onClick={handleEndSession} 
-              className={`btn ${isThresholdMet ? 'btn-primary' : 'btn-secondary'}`}
-              disabled={!isThresholdMet || isSessionEnding}
-              title={!isThresholdMet ? `Minimum ${selectedTask.expected_solution_length} keystrokes required` : ''}
-              style={{ width: '100%' }}
-            >
-              {isSessionEnding && <div className="spinner"></div>}
-              Submit Solution
-            </button>
-          </div>
+          </aside>
+
+          <main className="editor-workspace">
+            <KeystrokeLogger 
+              sessionId={sessionId} 
+              taskId={selectedTask.task_id} 
+              onKeystrokeChange={(count, text) => {
+                setKeystrokeCount(count);
+                setCurrentEditorText(text);
+              }}
+            />
+          </main>
         </div>
-        <KeystrokeLogger 
-          sessionId={sessionId} 
-          taskId={selectedTask.task_id} 
-          onKeystrokeChange={(count, text) => {
-            setKeystrokeCount(count);
-            setCurrentEditorText(text);
-          }}
-        />
       </div>
     );
   }

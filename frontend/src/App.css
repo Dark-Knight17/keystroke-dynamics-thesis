@@ -213,6 +213,30 @@
 }
 
 /* Logger/Session UI */
+.task-workspace {
+  display: flex;
+  gap: 2rem;
+  align-items: flex-start;
+  margin-top: 1rem;
+}
+
+.task-sidebar {
+  flex: 0 0 350px;
+  background: white;
+  padding: 2rem;
+  border-radius: 12px;
+  border: 1px solid var(--anthropic-light-gray);
+  position: sticky;
+  top: 2rem;
+  display: flex;
+  flex-direction: column;
+}
+
+.editor-workspace {
+  flex: 1;
+  min-width: 0;
+}
+
 .task-header {
   background: white;
   padding: 2rem;
