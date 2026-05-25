@@ -229,6 +229,10 @@ def login(request: Request, user_in: UserLogin, response: Response, db: Session 
         "token_type": "bearer"
     }
 
+@app.get("/me")
+def get_me(current_user: models.User = Depends(get_current_user)):
+    return {"user_id": str(current_user.user_id)}
+
 @app.post("/session/start")
 def start_session(
     session_in: SessionStart, 
