@@ -17,7 +17,7 @@ VOCAB = {'AltLeft': 0, 'AltRight': 1, 'ArrowDown': 2, 'ArrowLeft': 3, 'ArrowRigh
 @tf.keras.utils.register_keras_serializable()
 class TransformerBlock(tf.keras.layers.Layer):
     """Single Pre-LN Transformer encoder block."""
-    def __init__(self, d_model, num_heads, dff, dropout_rate, **kwargs):
+    def __init__(self, d_model=64, num_heads=4, dff=128, dropout_rate=0.1, **kwargs):
         super().__init__(**kwargs)
         self.d_model = d_model
         self.num_heads = num_heads
@@ -32,6 +32,9 @@ class TransformerBlock(tf.keras.layers.Layer):
         self.norm2 = tf.keras.layers.LayerNormalization(epsilon=1e-6)
         self.drop1 = tf.keras.layers.Dropout(dropout_rate)
         self.drop2 = tf.keras.layers.Dropout(dropout_rate)
+
+    def build(self, input_shape):
+        super().build(input_shape)
 
     def call(self, x, attention_mask=None, training=False):
         x_norm = self.norm1(x)
@@ -59,7 +62,7 @@ class TransformerBlock(tf.keras.layers.Layer):
 @tf.keras.utils.register_keras_serializable()
 class CLSTokenAndPosition(tf.keras.layers.Layer):
     """Encapsulates CLS token injection and Positional Embeddings."""
-    def __init__(self, seq_len, d_model, dropout_rate, **kwargs):
+    def __init__(self, seq_len=301, d_model=64, dropout_rate=0.1, **kwargs):
         super().__init__(**kwargs)
         self.seq_len = seq_len
         self.d_model = d_model
@@ -74,6 +77,7 @@ class CLSTokenAndPosition(tf.keras.layers.Layer):
             trainable=True,
             name='cls_token'
         )
+        super().build(input_shape)
 
     def call(self, x, training=False):
         batch_size = tf.shape(x)[0]
@@ -104,7 +108,8 @@ class FormatAttentionMask(tf.keras.layers.Layer):
 @tf.keras.utils.register_keras_serializable()
 class GetItem(tf.keras.layers.Layer):
     """Simple layer to extract CLS token."""
-    def call(self, x):
+    def call(self, x, *args, **kwargs):
+        # Handle cases where slice is passed positionally or in kwargs
         return x[:, 0, :]
 
 MAX_TIMESTEPS = 300
@@ -120,7 +125,14 @@ def get_model(participant_id: str):
     if not model_path.exists():
         raise FileNotFoundError(f"Model for participant {participant_id} not found at {model_path}")
     
-    return tf.keras.models.load_model(str(model_path))
+    custom_objects = {
+        "CLSTokenAndPosition": CLSTokenAndPosition,
+        "TransformerBlock": TransformerBlock,
+        "FormatAttentionMask": FormatAttentionMask,
+        "GetItem": GetItem
+    }
+    
+    return tf.keras.models.load_model(str(model_path), custom_objects=custom_objects)
 
 def preprocess_events(events: list[dict]) -> tuple[np.ndarray, np.ndarray]:
     """
