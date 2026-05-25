@@ -55,13 +55,6 @@ const KeystrokeLogger: React.FC<KeystrokeLoggerProps> = ({ sessionId, onKeystrok
     keystrokes: number;
   }>({ verdict: 'idle', score: null, keystrokes: 0 });
 
-  // Pattern to reset state when prop changes to avoid synchronous setState in useEffect
-  const [prevSessionId, setPrevSessionId] = useState(sessionId);
-  if (sessionId !== prevSessionId) {
-    setPrevSessionId(sessionId);
-    setAuthStatus({ verdict: 'idle', score: null, keystrokes: 0 });
-  }
-
   const eventBuffer = useRef<KeystrokeEvent[]>([]);
   const authBuffer = useRef<KeystrokeEvent[]>([]);
   const keystrokeCount = useRef<number>(0);
@@ -72,12 +65,23 @@ const KeystrokeLogger: React.FC<KeystrokeLoggerProps> = ({ sessionId, onKeystrok
   const editorRef = useRef<Parameters<OnMount>[0] | null>(null);
   const monacoRef = useRef<Monaco | null>(null);
 
+  // Pattern to reset state when prop changes to avoid synchronous setState in useEffect
+  const [prevSessionId, setPrevSessionId] = useState(sessionId);
+  if (sessionId !== prevSessionId) {
+    setPrevSessionId(sessionId);
+    setAuthStatus({ verdict: 'idle', score: null, keystrokes: 0 });
+    authBuffer.current = [];
+    eventBuffer.current = [];
+    keystrokeCount.current = 0;
+    eventSequence.current = 0;
+    isFirstBatch.current = true;
+  }
+
   const flushBuffer = useCallback(async (useBeacon = false) => {
     if (eventBuffer.current.length === 0) return;
 
     const eventsToUpload = [...eventBuffer.current];
     eventBuffer.current = [];
-    authBuffer.current = [];
     const batchId = uuidv4();
     const payload: KeystrokeBatchPayload = {
       session_id: sessionId,
@@ -112,11 +116,6 @@ const KeystrokeLogger: React.FC<KeystrokeLoggerProps> = ({ sessionId, onKeystrok
   }, [sessionId]);
 
   const runAuthVerification = useCallback(async () => {
-    // Keep rolling window of last 300 events for auth
-
-    if(authBuffer.current.length > 300) {
-      authBuffer.current = authBuffer.current.slice(-300);
-    }
     const buffer = authBuffer.current;
     if (buffer.length < 10) {
       setAuthStatus(prev => ({ ...prev, verdict: 'insufficient_data' }));
@@ -133,9 +132,6 @@ const KeystrokeLogger: React.FC<KeystrokeLoggerProps> = ({ sessionId, onKeystrok
   }, [sessionId]);
 
   useEffect(() => {
-    eventSequence.current = 0; // Reset sequence on new session
-    isFirstBatch.current = true; // Reset sync flag for new session
-    
     // Fetch beacon signature
     const fetchSignature = async () => {
       try {
@@ -219,6 +215,11 @@ const KeystrokeLogger: React.FC<KeystrokeLoggerProps> = ({ sessionId, onKeystrok
 
       eventBuffer.current.push(event);
       authBuffer.current.push(event);
+      
+      // Maintain rolling window in logEvent for memory efficiency
+      if (authBuffer.current.length > 300) {
+        authBuffer.current = authBuffer.current.slice(-300);
+      }
 
       if (type === 'keydown') {
         keystrokeCount.current += 1;
