@@ -63,6 +63,7 @@ const KeystrokeLogger: React.FC<KeystrokeLoggerProps> = ({ sessionId, onKeystrok
   }
 
   const eventBuffer = useRef<KeystrokeEvent[]>([]);
+  const authBuffer = useRef<KeystrokeEvent[]>([]);
   const keystrokeCount = useRef<number>(0);
   const eventSequence = useRef<number>(0);
   const isFirstBatch = useRef<boolean>(true);
@@ -76,6 +77,7 @@ const KeystrokeLogger: React.FC<KeystrokeLoggerProps> = ({ sessionId, onKeystrok
 
     const eventsToUpload = [...eventBuffer.current];
     eventBuffer.current = [];
+    authBuffer.current = [];
     const batchId = uuidv4();
     const payload: KeystrokeBatchPayload = {
       session_id: sessionId,
@@ -110,7 +112,12 @@ const KeystrokeLogger: React.FC<KeystrokeLoggerProps> = ({ sessionId, onKeystrok
   }, [sessionId]);
 
   const runAuthVerification = useCallback(async () => {
-    const buffer = eventBuffer.current;
+    // Keep rolling window of last 300 events for auth
+
+    if(authBuffer.current.length > 300) {
+      authBuffer.current = authBuffer.current.slice(-300);
+    }
+    const buffer = authBuffer.current;
     if (buffer.length < 10) {
       setAuthStatus(prev => ({ ...prev, verdict: 'insufficient_data' }));
       return;
@@ -211,6 +218,7 @@ const KeystrokeLogger: React.FC<KeystrokeLoggerProps> = ({ sessionId, onKeystrok
       };
 
       eventBuffer.current.push(event);
+      authBuffer.current.push(event);
 
       if (type === 'keydown') {
         keystrokeCount.current += 1;
