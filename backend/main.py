@@ -21,6 +21,11 @@ import io
 from datetime import datetime, timezone
 from auth_model import predict as auth_predict
 
+import numpy
+import tensorflow as tf
+print(f"DEPLOYMENT DIAGNOSTIC - NumPy Version: {numpy.__version__}")
+print(f"DEPLOYMENT DIAGNOSTIC - TensorFlow Version: {tf.__version__}")
+
 import models, database
 
 load_dotenv()
@@ -614,4 +619,7 @@ def export_sessions(
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    import os
+    # Get port from environment variable for Render compatibility
+    port = int(os.environ.get("PORT", 8000))
+    uvicorn.run(app, host="0.0.0.0", port=port)
