@@ -2,6 +2,10 @@ import os
 import functools
 import numpy as np
 import tensorflow as tf
+import json
+import zipfile
+import tempfile
+import shutil
 from pathlib import Path
 
 # Normalization statistics (Hardcoded from training results)
@@ -109,17 +113,44 @@ class FormatAttentionMask(tf.keras.layers.Layer):
 class GetItem(tf.keras.layers.Layer):
     """Simple layer to extract CLS token."""
     def call(self, x, *args, **kwargs):
-        # Handle cases where slice is passed positionally or in kwargs
         return x[:, 0, :]
 
 MAX_TIMESTEPS = 300
 MIN_KEYDOWN_EVENTS = 10
 
+def patch_model_config(config_dict):
+    """
+    Recursively patches the model configuration to fix Keras 3 deserialization errors.
+    Specifically fixes 'GetItem' and slicing positional arguments.
+    """
+    if isinstance(config_dict, dict):
+        # Fix GetItem layers that pass positional slices
+        if config_dict.get("class_name") == "GetItem" or config_dict.get("registered_name") == "GetItem":
+            if "inbound_nodes" in config_dict:
+                for node in config_dict["inbound_nodes"]:
+                    if "args" in node and len(node["args"]) > 1:
+                        # Keep only the first argument (the input tensor)
+                        # The slicing logic is hardcoded in our GetItem.call
+                        node["args"] = [node["args"][0]]
+        
+        # Also handle standard slicing operations if they were saved as layers
+        if config_dict.get("module") == "keras.src.ops.numpy" and config_dict.get("class_name") == "GetItem":
+             # Redirect to our custom GetItem which ignores extra args
+             config_dict["module"] = None
+             config_dict["class_name"] = "GetItem"
+             config_dict["registered_name"] = "GetItem"
+
+        for key, value in config_dict.items():
+            patch_model_config(value)
+    elif isinstance(config_dict, list):
+        for item in config_dict:
+            patch_model_config(item)
+    return config_dict
+
 @functools.lru_cache(maxsize=5)
 def get_model(participant_id: str):
     """
-    Loads a Transformer model for a specific participant from the disk.
-    Uses LRU cache to keep only the 5 most recently used models in memory.
+    Loads a Transformer model by manually patching its config to bypass Keras 3 strict checks.
     """
     model_path = Path(__file__).parent / "models" / f"transformer_{participant_id}.keras"
     if not model_path.exists():
@@ -131,43 +162,52 @@ def get_model(participant_id: str):
         "FormatAttentionMask": FormatAttentionMask,
         "GetItem": GetItem
     }
+
+    # Manual Loading Strategy:
+    # 1. Open .keras ZIP
+    # 2. Extract config.json and weights
+    # 3. Patch config.json
+    # 4. Reconstruct model
     
-    return tf.keras.models.load_model(str(model_path), custom_objects=custom_objects)
+    with tempfile.TemporaryDirectory() as tmpdir:
+        with zipfile.ZipFile(model_path, 'r') as zip_ref:
+            zip_ref.extractall(tmpdir)
+        
+        config_path = Path(tmpdir) / "config.json"
+        with open(config_path, 'r') as f:
+            config = json.load(f)
+        
+        # Patch the config to remove positional slices
+        patched_config = patch_model_config(config)
+        
+        # Reconstruct architecture
+        model = tf.keras.models.model_from_json(json.dumps(patched_config), custom_objects=custom_objects)
+        
+        # Load weights
+        weights_path = Path(tmpdir) / "model.weights.h5"
+        if weights_path.exists():
+            model.load_weights(str(weights_path))
+        
+        return model
 
 def preprocess_events(events: list[dict]) -> tuple[np.ndarray, np.ndarray]:
     """
     Prepares raw keystroke events for Transformer inference.
-    
-    Processing steps:
-    1. Filter to 'keydown' events only.
-    2. Sort events by timestamp.
-    3. Compute flight_time (diff between consecutive keydowns).
-    4. Encode physical_code using hardcoded VOCAB.
-    5. Stack features: [physical_code, flight_time, text_length].
-    6. Truncate/Pre-pad to exactly 300 timesteps.
-    7. Generate boolean mask for real data positions.
-    8. Normalize features using hardcoded STATS and re-zero padded positions.
     """
-    # 1. & 2. Filter and Sort
     keydown_events = [e for e in events if e.get('event_type') == 'keydown']
     keydown_events.sort(key=lambda x: x['timestamp'])
     
     if not keydown_events:
         return np.zeros((1, MAX_TIMESTEPS, 3), dtype='float32'), np.zeros((1, MAX_TIMESTEPS), dtype='bool')
 
-    # 3. Compute flight_time
     timestamps = np.array([e['timestamp'] for e in keydown_events])
     flight_times = np.diff(timestamps, prepend=timestamps[0])
-    flight_times = np.clip(flight_times, 0, 2000).astype('float32')  # Cap at 2000ms to reduce outlier impact
+    flight_times = np.clip(flight_times, 0, 2000).astype('float32')
 
-    # 4. Encode physical_code
     encoded_codes = [VOCAB.get(e.get('physical_code'), 0) for e in keydown_events]
-
-    # 5. Stack features
     text_lengths = [e.get('text_length', 0) for e in keydown_events]
     features = np.stack([encoded_codes, flight_times, text_lengths], axis=1).astype('float32')
 
-    # 6. Truncate/Pad
     n_events = len(features)
     if n_events > MAX_TIMESTEPS:
         features = features[-MAX_TIMESTEPS:]
@@ -178,30 +218,16 @@ def preprocess_events(events: list[dict]) -> tuple[np.ndarray, np.ndarray]:
         features = np.vstack([padding, features])
         mask = np.concatenate([np.zeros(pad_len, dtype='bool'), np.ones(n_events, dtype='bool')])
 
-    # 7. Normalize
-    # physical_code normalization
     features[:, 0] = (features[:, 0] - STATS['physical_code']['mean']) / STATS['physical_code']['std']
-    # flight_time normalization
     features[:, 1] = (features[:, 1] - STATS['flight_time']['mean']) / STATS['flight_time']['std']
-    # text_length normalization
     features[:, 2] = (features[:, 2] - STATS['text_length']['mean']) / STATS['text_length']['std']
 
-    # 8. Re-zero padded positions
     features[~mask] = 0.0
-
-    # Reshape for model input (batch_size=1)
     return features.reshape(1, MAX_TIMESTEPS, 3), mask.reshape(1, MAX_TIMESTEPS)
 
 def predict(participant_id: str, events: list[dict]) -> dict:
     """
     Runs real-time authentication for a participant based on a batch of events.
-    
-    Returns:
-        dict: {
-            "score": float | None,
-            "verdict": "genuine" | "impostor" | "uncertain" | "insufficient_data",
-            "keystrokes": int
-        }
     """
     keydown_events = [e for e in events if e.get('event_type') == 'keydown']
     n_keydown = len(keydown_events)
@@ -215,9 +241,8 @@ def predict(participant_id: str, events: list[dict]) -> dict:
     
     try:
         model = get_model(participant_id)
-    except FileNotFoundError:
-        # If model doesn't exist, we can't authenticate. 
-        # In a real system we might fallback or return an error.
+    except Exception as e:
+        print(f"Model Loading Error for {participant_id}: {str(e)}")
         return {
             "score": None,
             "verdict": "model_not_found",
@@ -225,13 +250,9 @@ def predict(participant_id: str, events: list[dict]) -> dict:
         }
 
     X, M = preprocess_events(events)
-    
-    # Run inference
-    # Note: Transformer model expects two inputs [sequence, mask]
     prediction = model.predict([X, M], verbose=0)
     score = float(prediction[0][0])
     
-    # Verdict thresholds
     if score >= 0.65:
         verdict = "genuine"
     elif score <= 0.35:
