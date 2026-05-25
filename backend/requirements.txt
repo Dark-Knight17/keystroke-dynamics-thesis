@@ -9,5 +9,5 @@ psycopg2-binary
 passlib[bcrypt]
 bcrypt
 pandas
-numpy
-tensorflow
+numpy<2.0.0
+tensorflow-cpu
