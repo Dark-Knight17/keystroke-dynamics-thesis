@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
-import Editor, { Monaco, OnMount } from '@monaco-editor/react';
+import Editor, { type Monaco, type OnMount } from '@monaco-editor/react';
 import { v4 as uuidv4 } from 'uuid';
 import api from '../api';
 
