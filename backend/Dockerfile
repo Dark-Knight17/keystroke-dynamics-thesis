@@ -28,8 +28,8 @@ ENV HOME=/home/user \
 WORKDIR $HOME/app
 
 # Install dependencies
-COPY --chown=user requirements.txt .
-RUN pip install --no-cache-dir --user -r requirements.txt
+COPY --chown=user requirements-prod.txt .
+RUN pip install --no-cache-dir --user -r requirements-prod.txt
 
 # Copy the rest of the backend code
 COPY --chown=user . .
