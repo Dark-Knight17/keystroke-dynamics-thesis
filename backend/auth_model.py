@@ -127,6 +127,7 @@ def patch_model_config(config_dict):
         # 1. Strip known Keras 3 specific keys from any layer config
         if "config" in config_dict and isinstance(config_dict["config"], dict):
             inner = config_dict["config"]
+            
             # These keys were added in Keras 3 and cause Keras 2 to panic
             illegal_keys = [
                 "quantization_config", "optional", "rms_scaling", 
@@ -136,18 +137,25 @@ def patch_model_config(config_dict):
                 if key in inner:
                     inner.pop(key)
             
-            # 2. Translate DTypePolicy back to simple string
+            # 2. Fix Batch Shape (The "as_list" error culprit)
+            # Keras 2 only expects 'batch_input_shape' on the InputLayer.
+            # Keras 3 adds 'batch_shape' to EVERY layer, which crashes Keras 2.
+            if config_dict.get("class_name") == "InputLayer":
+                if "batch_shape" in inner:
+                    shape_val = inner.pop("batch_shape")
+                    # Force the shape to be a list to satisfy Keras 2's .as_list() requirement
+                    inner["batch_input_shape"] = list(shape_val) if isinstance(shape_val, (list, tuple)) else shape_val
+            else:
+                # Remove batch_shape from non-input layers to prevent validation errors
+                if "batch_shape" in inner:
+                    inner.pop("batch_shape")
+
+            # 3. Translate DTypePolicy back to simple string
             dtype = inner.get("dtype")
             if isinstance(dtype, dict) and dtype.get("class_name") == "DTypePolicy":
                 inner["dtype"] = dtype.get("config", {}).get("name", "float32")
-
-        # 3. Fix InputLayer specific syntax
-        if config_dict.get("class_name") == "InputLayer":
-            inner = config_dict.get("config", {})
-            if isinstance(inner, dict) and "batch_shape" in inner:
-                shape_val = inner.pop("batch_shape")
-                # Force the shape to be a list to satisfy Keras 2's .as_list() requirement
-                inner["batch_input_shape"] = list(shape_val) if isinstance(shape_val, (list, tuple)) else shape_val
+            elif dtype is None:
+                inner["dtype"] = "float32"
 
         # 4. Fix GetItem layers (manual slicing)
         if config_dict.get("class_name") == "GetItem" or config_dict.get("registered_name") == "GetItem":
@@ -203,11 +211,20 @@ def get_model(participant_id: str):
         with open(config_path, 'r') as f:
             config = json.load(f)
         
-        # Patch the config to remove positional slices
+        # Patch the config
         patched_config = patch_model_config(config)
         
-        # Reconstruct architecture
-        model = tf.keras.models.model_from_json(json.dumps(patched_config), custom_objects=custom_objects)
+        try:
+            # Reconstruct architecture
+            model = tf.keras.models.model_from_json(json.dumps(patched_config), custom_objects=custom_objects)
+        except Exception as e:
+            # Enhanced diagnostic logging for production
+            print(f"--- MODEL RECONSTRUCTION FAILED FOR {participant_id} ---")
+            print(f"Error Type: {type(e).__name__}")
+            print(f"Error Message: {str(e)}")
+            # We don't print the whole config to avoid bloating logs, 
+            # but we show that we hit the failure point.
+            raise e
         
         # Load weights
         weights_path = Path(tmpdir) / "model.weights.h5"
