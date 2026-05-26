@@ -34,6 +34,7 @@ const App: React.FC = () => {
   const [isInitialLoading, setIsInitialLoading] = useState(true);
   const [isSessionStarting, setIsSessionStarting] = useState(false);
   const [isSessionEnding, setIsSessionEnding] = useState(false);
+  const [expandedDays, setExpandedDays] = useState<Set<string>>(new Set(['Day 1']));
 
   useEffect(() => {
     const checkAuth = async () => {
@@ -56,7 +57,20 @@ const App: React.FC = () => {
     if (!userId) return;
     try {
       const tasksResponse = await api.get('/tasks');
-      setTasks(tasksResponse.data);
+      const fetchedTasks = tasksResponse.data;
+      setTasks(fetchedTasks);
+
+      // Auto-expand logic: find first day not fully completed
+      const daysList = ['Day 1', 'Day 2', 'Day 3'];
+      const firstIncompleteDay = daysList.find(dLabel => {
+        const dNum = parseInt(dLabel.split(' ')[1]);
+        const dayTasks = fetchedTasks.filter((t: Task) => t.day === dNum);
+        return dayTasks.length > 0 && dayTasks.some((t: Task) => !t.is_completed);
+      });
+
+      if (firstIncompleteDay) {
+        setExpandedDays(new Set([firstIncompleteDay]));
+      }
       
       const participantResponse = await api.get(`/participant/${userId}`);
       setParticipant(participantResponse.data);
@@ -234,6 +248,18 @@ const App: React.FC = () => {
     return tasks.some(t => t.day < dayNum && !t.is_completed);
   };
 
+  const toggleDay = (dayLabel: string) => {
+    setExpandedDays(prev => {
+      const next = new Set(prev);
+      if (next.has(dayLabel)) {
+        next.delete(dayLabel);
+      } else {
+        next.add(dayLabel);
+      }
+      return next;
+    });
+  };
+
   return (
     <div className="App">
       <header style={{ marginBottom: '3rem' }}>
@@ -241,53 +267,79 @@ const App: React.FC = () => {
         <p style={{ fontSize: '1.1rem' }}>Welcome back. Please complete the tasks assigned for each day in order.</p>
       </header>
       
-      <div className="day-columns">
+      <div className="dashboard-accordion">
         {days.map((dayLabel, idx) => {
           const dayNum = idx + 1;
           const locked = isDayLocked(dayNum);
           const dayTasks = groupedTasks[dayLabel] || [];
+          const isExpanded = expandedDays.has(dayLabel);
+          const completedCount = dayTasks.filter(t => t.is_completed).length;
+          const totalCount = dayTasks.length;
+          const isFullyCompleted = totalCount > 0 && completedCount === totalCount;
           
           return (
-            <div key={dayLabel} className={`day-column ${locked ? 'day-locked' : ''}`} style={{ opacity: locked ? 0.5 : 1 }}>
-              <h2>
-                {dayLabel}
-                {locked && <span title="Complete previous days to unlock" style={{ fontSize: '1.1rem', opacity: 0.6 }}>🔒</span>}
-              </h2>
-              <div className="task-list">
-                {isInitialLoading ? (
-                  <>
-                    <TaskSkeleton />
-                    <TaskSkeleton />
-                  </>
-                ) : (
-                  <>
-                    {dayTasks.map((task) => (
-                      <div 
-                        key={task.task_id} 
-                        className={`task-card ${locked ? 'task-locked' : ''} ${task.is_completed ? 'task-completed' : ''}`} 
-                      >
-                        {task.is_completed && <span className="task-status-badge">✓ COMPLETED</span>}
-                        <h3>{task.task_title.replace(/\[Day \d\] /, '')}</h3>
-                        <p>
-                          <strong>Difficulty</strong> {task.difficulty_level}
-                        </p>
-                        <button
-                          onClick={() => handleStartSession(task)}
-                          className={`btn ${task.is_completed ? 'btn-secondary' : 'btn-primary'}`}
-                          style={{ width: '100%' }}
-                          disabled={locked || isSessionStarting}
-                        >
-                          {isSessionStarting && <div className="spinner"></div>}
-                          {locked ? 'Locked' : (task.is_completed ? 'Redo Session' : 'Start Task')}
-                        </button>
-                      </div>
-                    ))}
-                    {dayTasks.length === 0 && (
-                      <p style={{ color: 'var(--anthropic-mid-gray)', fontStyle: 'italic' }}>No tasks assigned.</p>
-                    )}
-                  </>
-                )}
+            <div 
+              key={dayLabel} 
+              className={`accordion-item ${isExpanded ? 'expanded' : ''} ${locked ? 'locked' : ''}`}
+            >
+              <div 
+                className="accordion-header" 
+                onClick={() => !locked && toggleDay(dayLabel)}
+              >
+                <h2>
+                  {dayLabel}
+                  {locked && <span title="Complete previous days to unlock" style={{ fontSize: '1.1rem', opacity: 0.6 }}>🔒</span>}
+                  {isFullyCompleted && !locked && <span style={{ color: 'var(--anthropic-green)', fontSize: '1.1rem' }}>✓</span>}
+                </h2>
+                <div className="header-meta">
+                  {totalCount > 0 && (
+                    <span className="day-progress-label">
+                      {completedCount} / {totalCount} Tasks
+                    </span>
+                  )}
+                  <span className="chevron">▼</span>
+                </div>
               </div>
+
+              {isExpanded && !locked && (
+                <div className="accordion-content">
+                  <div className="task-list">
+                    {isInitialLoading ? (
+                      <>
+                        <TaskSkeleton />
+                        <TaskSkeleton />
+                      </>
+                    ) : (
+                      <>
+                        {dayTasks.map((task) => (
+                          <div 
+                            key={task.task_id} 
+                            className={`task-card ${task.is_completed ? 'task-completed' : ''}`} 
+                          >
+                            {task.is_completed && <span className="task-status-badge">✓ COMPLETED</span>}
+                            <h3>{task.task_title.replace(/\[Day \d\] /, '')}</h3>
+                            <p>
+                              <strong>Difficulty</strong> {task.difficulty_level}
+                            </p>
+                            <button
+                              onClick={() => handleStartSession(task)}
+                              className={`btn ${task.is_completed ? 'btn-secondary' : 'btn-primary'}`}
+                              style={{ width: '100%' }}
+                              disabled={isSessionStarting}
+                            >
+                              {isSessionStarting && <div className="spinner"></div>}
+                              {task.is_completed ? 'Redo Session' : 'Start Task'}
+                            </button>
+                          </div>
+                        ))}
+                        {dayTasks.length === 0 && (
+                          <p style={{ color: 'var(--anthropic-mid-gray)', fontStyle: 'italic' }}>No tasks assigned.</p>
+                        )}
+                      </>
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
           );
         })}
