@@ -26,6 +26,19 @@ import tensorflow as tf
 print(f"DEPLOYMENT DIAGNOSTIC - NumPy Version: {numpy.__version__}")
 print(f"DEPLOYMENT DIAGNOSTIC - TensorFlow Version: {tf.__version__}")
 
+import subprocess
+print("--- HARDWARE DIAGNOSTIC ---")
+try:
+    # Get CPU info from the Linux kernel
+    cpu_info = subprocess.check_output("cat /proc/cpuinfo | grep 'model name' | head -n 1", shell=True).decode()
+    cpu_flags = subprocess.check_output("cat /proc/cpuinfo | grep 'flags' | head -n 1", shell=True).decode()
+    print(f"CPU Model: {cpu_info.strip()}")
+    print(f"AVX2 Supported: {'avx2' in cpu_flags}")
+    print(f"AVX Supported: {'avx' in cpu_flags}")
+except Exception as e:
+    print(f"Could not retrieve CPU info: {str(e)}")
+print("---------------------------")
+
 import models, database
 
 load_dotenv()
