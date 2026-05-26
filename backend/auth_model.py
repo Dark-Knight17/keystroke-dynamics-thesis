@@ -145,7 +145,9 @@ def patch_model_config(config_dict):
         if config_dict.get("class_name") == "InputLayer":
             inner = config_dict.get("config", {})
             if isinstance(inner, dict) and "batch_shape" in inner:
-                inner["batch_input_shape"] = inner.pop("batch_shape")
+                shape_val = inner.pop("batch_shape")
+                # Force the shape to be a list to satisfy Keras 2's .as_list() requirement
+                inner["batch_input_shape"] = list(shape_val) if isinstance(shape_val, (list, tuple)) else shape_val
 
         # 4. Fix GetItem layers (manual slicing)
         if config_dict.get("class_name") == "GetItem" or config_dict.get("registered_name") == "GetItem":
