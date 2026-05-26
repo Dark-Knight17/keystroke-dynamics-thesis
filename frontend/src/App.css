@@ -235,6 +235,16 @@
   transform: translateY(-2px);
 }
 
+.task-status-badge {
+  font-family: var(--font-heading);
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: var(--anthropic-green);
+  margin-bottom: 0.75rem;
+  display: block;
+}
+
 .task-card h3 {
   font-size: 1.2rem;
   margin-top: 0;
