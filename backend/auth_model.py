@@ -124,13 +124,23 @@ def patch_model_config(config_dict):
     deserialization errors and slicing positional argument issues.
     """
     if isinstance(config_dict, dict):
-        # 1. Fix InputLayer syntax (Keras 3 uses 'batch_shape' and 'optional')
+        # Generic cleanup for any layer config
+        inner_config = config_dict.get("config", {})
+        if isinstance(inner_config, dict):
+            # Remove Keras 3 specific keys that crash Keras 2
+            for key in ["quantization_config", "optional"]:
+                if key in inner_config:
+                    inner_config.pop(key)
+            
+            # Fix dtype if it's a DTypePolicy dict (Keras 3)
+            dtype = inner_config.get("dtype")
+            if isinstance(dtype, dict) and dtype.get("class_name") == "DTypePolicy":
+                inner_config["dtype"] = dtype.get("config", {}).get("name", "float32")
+
+        # 1. Fix InputLayer syntax (Keras 3 uses 'batch_shape' instead of 'batch_input_shape')
         if config_dict.get("class_name") == "InputLayer":
-            inner_config = config_dict.get("config", {})
-            if "batch_shape" in inner_config:
+            if isinstance(inner_config, dict) and "batch_shape" in inner_config:
                 inner_config["batch_input_shape"] = inner_config.pop("batch_shape")
-            if "optional" in inner_config:
-                inner_config.pop("optional")
 
         # 2. Fix GetItem layers that pass positional slices
         if config_dict.get("class_name") == "GetItem" or config_dict.get("registered_name") == "GetItem":
