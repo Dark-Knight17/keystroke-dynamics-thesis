@@ -121,10 +121,14 @@ MIN_KEYDOWN_EVENTS = 10
 def patch_model_config(config_dict):
     """
     Exhaustively patches the model configuration to strip Keras 3 specific features
-    that cause Keras 2 to crash. Handles serialization drift between versions.
+    and downgrade functional graph connections to Keras 2 format.
     """
     if isinstance(config_dict, dict):
-        # 1. Strip known Keras 3 specific keys from any layer config
+        # 1. Strip Keras 3 top-level metadata
+        for key in ["module", "registered_name"]:
+            if key in config_dict:
+                config_dict.pop(key)
+
         if "config" in config_dict and isinstance(config_dict["config"], dict):
             inner = config_dict["config"]
             
@@ -138,15 +142,11 @@ def patch_model_config(config_dict):
                     inner.pop(key)
             
             # 2. Fix Batch Shape (The "as_list" error culprit)
-            # Keras 2 only expects 'batch_input_shape' on the InputLayer.
-            # Keras 3 adds 'batch_shape' to EVERY layer, which crashes Keras 2.
             if config_dict.get("class_name") == "InputLayer":
                 if "batch_shape" in inner:
                     shape_val = inner.pop("batch_shape")
-                    # Force the shape to be a list to satisfy Keras 2's .as_list() requirement
                     inner["batch_input_shape"] = list(shape_val) if isinstance(shape_val, (list, tuple)) else shape_val
             else:
-                # Remove batch_shape from non-input layers to prevent validation errors
                 if "batch_shape" in inner:
                     inner.pop("batch_shape")
 
@@ -157,19 +157,32 @@ def patch_model_config(config_dict):
             elif dtype is None:
                 inner["dtype"] = "float32"
 
-        # 4. Fix GetItem layers (manual slicing)
-        if config_dict.get("class_name") == "GetItem" or config_dict.get("registered_name") == "GetItem":
-            if "inbound_nodes" in config_dict:
-                for node in config_dict["inbound_nodes"]:
-                    if "args" in node and len(node["args"]) > 1:
-                        # Keep only the input tensor; slicing is handled in our GetItem class
-                        node["args"] = [node["args"][0]]
-        
-        # 5. Redirect standard Keras ops to our custom layers
-        if config_dict.get("module") == "keras.src.ops.numpy" and config_dict.get("class_name") == "GetItem":
-             config_dict["module"] = None
-             config_dict["class_name"] = "GetItem"
-             config_dict["registered_name"] = "GetItem"
+        # 4. Downgrade inbound_nodes from Keras 3 (dict) to Keras 2 (nested lists)
+        if "inbound_nodes" in config_dict and isinstance(config_dict["inbound_nodes"], list):
+            new_nodes = []
+            for node in config_dict["inbound_nodes"]:
+                # If it's the Keras 3 dict format: {"args": [...], "kwargs": {...}}
+                if isinstance(node, dict) and "args" in node:
+                    node_connections = []
+                    for arg in node["args"]:
+                        # Extract keras_history if available
+                        if isinstance(arg, dict) and "config" in arg and "keras_history" in arg["config"]:
+                            history = arg["config"]["keras_history"] # e.g. ["layer_name", 0, 0]
+                            # Keras 2 format: ["layer_name", node_index, tensor_index, metadata_dict]
+                            node_connections.append([history[0], history[1], history[2], {}])
+                        # Handle basic list history
+                        elif isinstance(arg, list) and len(arg) == 3:
+                            node_connections.append([arg[0], arg[1], arg[2], {}])
+                    
+                    if node_connections:
+                        new_nodes.append(node_connections)
+                
+                # If it's already a list (Keras 2), keep it but ensure indices are integers
+                elif isinstance(node, list):
+                    new_nodes.append(node)
+            
+            if new_nodes:
+                config_dict["inbound_nodes"] = new_nodes
 
         # Recursive walk
         for key, value in config_dict.items():
