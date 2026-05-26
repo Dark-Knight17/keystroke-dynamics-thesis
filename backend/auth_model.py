@@ -120,11 +120,19 @@ MIN_KEYDOWN_EVENTS = 10
 
 def patch_model_config(config_dict):
     """
-    Recursively patches the model configuration to fix Keras 3 deserialization errors.
-    Specifically fixes 'GetItem' and slicing positional arguments.
+    Recursively patches the model configuration to fix Keras 3 vs Keras 2 
+    deserialization errors and slicing positional argument issues.
     """
     if isinstance(config_dict, dict):
-        # Fix GetItem layers that pass positional slices
+        # 1. Fix InputLayer syntax (Keras 3 uses 'batch_shape' and 'optional')
+        if config_dict.get("class_name") == "InputLayer":
+            inner_config = config_dict.get("config", {})
+            if "batch_shape" in inner_config:
+                inner_config["batch_input_shape"] = inner_config.pop("batch_shape")
+            if "optional" in inner_config:
+                inner_config.pop("optional")
+
+        # 2. Fix GetItem layers that pass positional slices
         if config_dict.get("class_name") == "GetItem" or config_dict.get("registered_name") == "GetItem":
             if "inbound_nodes" in config_dict:
                 for node in config_dict["inbound_nodes"]:
@@ -133,9 +141,8 @@ def patch_model_config(config_dict):
                         # The slicing logic is hardcoded in our GetItem.call
                         node["args"] = [node["args"][0]]
         
-        # Also handle standard slicing operations if they were saved as layers
+        # 3. Standard slicing operations redirection
         if config_dict.get("module") == "keras.src.ops.numpy" and config_dict.get("class_name") == "GetItem":
-             # Redirect to our custom GetItem which ignores extra args
              config_dict["module"] = None
              config_dict["class_name"] = "GetItem"
              config_dict["registered_name"] = "GetItem"
