@@ -2,10 +2,8 @@ import os
 import functools
 import numpy as np
 import tensorflow as tf
-import json
 import zipfile
 import tempfile
-import shutil
 from pathlib import Path
 
 # Normalization statistics (Hardcoded from training results)
@@ -118,133 +116,64 @@ class GetItem(tf.keras.layers.Layer):
 MAX_TIMESTEPS = 300
 MIN_KEYDOWN_EVENTS = 10
 
-def patch_model_config(config_dict):
+def build_transformer_auth_model():
     """
-    Exhaustively patches the model configuration to strip Keras 3 specific features
-    and downgrade functional graph connections to Keras 2 format.
+    Manually reconstructs the Transformer architecture in code.
+    This ensures cross-version compatibility between Keras 2 and 3.
     """
-    if isinstance(config_dict, dict):
-        # 1. Strip Keras 3 top-level metadata
-        for key in ["module", "registered_name"]:
-            if key in config_dict:
-                config_dict.pop(key)
-
-        if "config" in config_dict and isinstance(config_dict["config"], dict):
-            inner = config_dict["config"]
-            
-            # These keys were added in Keras 3 and cause Keras 2 to panic
-            illegal_keys = [
-                "quantization_config", "optional", "rms_scaling", 
-                "synchronized", "seed_generator", "data_format"
-            ]
-            for key in illegal_keys:
-                if key in inner:
-                    inner.pop(key)
-            
-            # 2. Fix Batch Shape (The "as_list" error culprit)
-            if config_dict.get("class_name") == "InputLayer":
-                if "batch_shape" in inner:
-                    shape_val = inner.pop("batch_shape")
-                    inner["batch_input_shape"] = list(shape_val) if isinstance(shape_val, (list, tuple)) else shape_val
-            else:
-                if "batch_shape" in inner:
-                    inner.pop("batch_shape")
-
-            # 3. Translate DTypePolicy back to simple string
-            dtype = inner.get("dtype")
-            if isinstance(dtype, dict) and dtype.get("class_name") == "DTypePolicy":
-                inner["dtype"] = dtype.get("config", {}).get("name", "float32")
-            elif dtype is None:
-                inner["dtype"] = "float32"
-
-        # 4. Downgrade inbound_nodes from Keras 3 (dict) to Keras 2 (nested lists)
-        if "inbound_nodes" in config_dict and isinstance(config_dict["inbound_nodes"], list):
-            new_nodes = []
-            for node in config_dict["inbound_nodes"]:
-                # If it's the Keras 3 dict format: {"args": [...], "kwargs": {...}}
-                if isinstance(node, dict) and "args" in node:
-                    node_connections = []
-                    for arg in node["args"]:
-                        # Extract keras_history if available
-                        if isinstance(arg, dict) and "config" in arg and "keras_history" in arg["config"]:
-                            history = arg["config"]["keras_history"] # e.g. ["layer_name", 0, 0]
-                            # Keras 2 format: ["layer_name", node_index, tensor_index, metadata_dict]
-                            node_connections.append([history[0], history[1], history[2], {}])
-                        # Handle basic list history
-                        elif isinstance(arg, list) and len(arg) == 3:
-                            node_connections.append([arg[0], arg[1], arg[2], {}])
-                    
-                    if node_connections:
-                        new_nodes.append(node_connections)
-                
-                # If it's already a list (Keras 2), keep it but ensure indices are integers
-                elif isinstance(node, list):
-                    new_nodes.append(node)
-            
-            if new_nodes:
-                config_dict["inbound_nodes"] = new_nodes
-
-        # Recursive walk
-        for key, value in config_dict.items():
-            patch_model_config(value)
-            
-    elif isinstance(config_dict, list):
-        for item in config_dict:
-            patch_model_config(item)
-            
-    return config_dict
+    # 1. Inputs
+    seq_input = tf.keras.Input(shape=(300, 3), name='seq_input')
+    mask_input = tf.keras.Input(shape=(300,), dtype='bool', name='mask_input')
+    
+    # 2. Projection
+    x = tf.keras.layers.Dense(64, activation='linear', name='input_projection')(seq_input)
+    
+    # 3. CLS Token and Position
+    x = CLSTokenAndPosition(seq_len=301, d_model=64, dropout_rate=0.1, name='cls_and_position')(x)
+    
+    # 4. Mask Formatting
+    formatted_mask = FormatAttentionMask(name='mask_formatter')(mask_input)
+    
+    # 5. Transformer Blocks
+    x = TransformerBlock(d_model=64, num_heads=4, dff=128, dropout_rate=0.1, name='transformer_block_0')(x, attention_mask=formatted_mask)
+    x = TransformerBlock(d_model=64, num_heads=4, dff=128, dropout_rate=0.1, name='transformer_block_1')(x, attention_mask=formatted_mask)
+    
+    # 6. Global Pooling (Extract CLS token)
+    x = GetItem(name='get_item')(x)
+    
+    # 7. Final Classification Head
+    x = tf.keras.layers.LayerNormalization(epsilon=1e-6, name='cls_norm')(x)
+    x = tf.keras.layers.Dense(32, activation='relu', name='cls_dense')(x)
+    x = tf.keras.layers.Dropout(0.3, name='cls_dropout')(x)
+    output = tf.keras.layers.Dense(1, activation='sigmoid', name='output')(x)
+    
+    return tf.keras.Model(inputs=[seq_input, mask_input], outputs=output)
 
 @functools.lru_cache(maxsize=5)
 def get_model(participant_id: str):
     """
-    Loads a Transformer model by manually patching its config to bypass Keras 3 strict checks.
+    Loads a model by building the architecture in code and loading ONLY the weights.
+    This bypasses all JSON serialization incompatibilities between Keras versions.
     """
     model_path = Path(__file__).parent / "models" / f"transformer_{participant_id}.keras"
     if not model_path.exists():
         raise FileNotFoundError(f"Model for participant {participant_id} not found at {model_path}")
     
-    custom_objects = {
-        "CLSTokenAndPosition": CLSTokenAndPosition,
-        "TransformerBlock": TransformerBlock,
-        "FormatAttentionMask": FormatAttentionMask,
-        "GetItem": GetItem
-    }
-
-    # Manual Loading Strategy:
-    # 1. Open .keras ZIP
-    # 2. Extract config.json and weights
-    # 3. Patch config.json
-    # 4. Reconstruct model
+    # 1. Build the fresh architecture
+    model = build_transformer_auth_model()
     
+    # 2. Extract weights from the .keras ZIP archive
     with tempfile.TemporaryDirectory() as tmpdir:
         with zipfile.ZipFile(model_path, 'r') as zip_ref:
-            zip_ref.extractall(tmpdir)
+            # .keras files store weights in model.weights.h5
+            zip_ref.extract('model.weights.h5', path=tmpdir)
         
-        config_path = Path(tmpdir) / "config.json"
-        with open(config_path, 'r') as f:
-            config = json.load(f)
+        weights_path = Path(tmpdir) / 'model.weights.h5'
         
-        # Patch the config
-        patched_config = patch_model_config(config)
-        
-        try:
-            # Reconstruct architecture
-            model = tf.keras.models.model_from_json(json.dumps(patched_config), custom_objects=custom_objects)
-        except Exception as e:
-            # Enhanced diagnostic logging for production
-            print(f"--- MODEL RECONSTRUCTION FAILED FOR {participant_id} ---")
-            print(f"Error Type: {type(e).__name__}")
-            print(f"Error Message: {str(e)}")
-            # We don't print the whole config to avoid bloating logs, 
-            # but we show that we hit the failure point.
-            raise e
-        
-        # Load weights
-        weights_path = Path(tmpdir) / "model.weights.h5"
-        if weights_path.exists():
-            model.load_weights(str(weights_path))
-        
-        return model
+        # 3. Load the identical learned weights
+        model.load_weights(str(weights_path))
+    
+    return model
 
 def preprocess_events(events: list[dict]) -> tuple[np.ndarray, np.ndarray]:
     """
