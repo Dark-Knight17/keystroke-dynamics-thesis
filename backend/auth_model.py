@@ -120,48 +120,55 @@ MIN_KEYDOWN_EVENTS = 10
 
 def patch_model_config(config_dict):
     """
-    Recursively patches the model configuration to fix Keras 3 vs Keras 2 
-    deserialization errors and slicing positional argument issues.
+    Exhaustively patches the model configuration to strip Keras 3 specific features
+    that cause Keras 2 to crash. Handles serialization drift between versions.
     """
     if isinstance(config_dict, dict):
-        # Generic cleanup for any layer config
-        inner_config = config_dict.get("config", {})
-        if isinstance(inner_config, dict):
-            # Remove Keras 3 specific keys that crash Keras 2
-            for key in ["quantization_config", "optional"]:
-                if key in inner_config:
-                    inner_config.pop(key)
+        # 1. Strip known Keras 3 specific keys from any layer config
+        if "config" in config_dict and isinstance(config_dict["config"], dict):
+            inner = config_dict["config"]
+            # These keys were added in Keras 3 and cause Keras 2 to panic
+            illegal_keys = [
+                "quantization_config", "optional", "rms_scaling", 
+                "synchronized", "seed_generator", "data_format"
+            ]
+            for key in illegal_keys:
+                if key in inner:
+                    inner.pop(key)
             
-            # Fix dtype if it's a DTypePolicy dict (Keras 3)
-            dtype = inner_config.get("dtype")
+            # 2. Translate DTypePolicy back to simple string
+            dtype = inner.get("dtype")
             if isinstance(dtype, dict) and dtype.get("class_name") == "DTypePolicy":
-                inner_config["dtype"] = dtype.get("config", {}).get("name", "float32")
+                inner["dtype"] = dtype.get("config", {}).get("name", "float32")
 
-        # 1. Fix InputLayer syntax (Keras 3 uses 'batch_shape' instead of 'batch_input_shape')
+        # 3. Fix InputLayer specific syntax
         if config_dict.get("class_name") == "InputLayer":
-            if isinstance(inner_config, dict) and "batch_shape" in inner_config:
-                inner_config["batch_input_shape"] = inner_config.pop("batch_shape")
+            inner = config_dict.get("config", {})
+            if isinstance(inner, dict) and "batch_shape" in inner:
+                inner["batch_input_shape"] = inner.pop("batch_shape")
 
-        # 2. Fix GetItem layers that pass positional slices
+        # 4. Fix GetItem layers (manual slicing)
         if config_dict.get("class_name") == "GetItem" or config_dict.get("registered_name") == "GetItem":
             if "inbound_nodes" in config_dict:
                 for node in config_dict["inbound_nodes"]:
                     if "args" in node and len(node["args"]) > 1:
-                        # Keep only the first argument (the input tensor)
-                        # The slicing logic is hardcoded in our GetItem.call
+                        # Keep only the input tensor; slicing is handled in our GetItem class
                         node["args"] = [node["args"][0]]
         
-        # 3. Standard slicing operations redirection
+        # 5. Redirect standard Keras ops to our custom layers
         if config_dict.get("module") == "keras.src.ops.numpy" and config_dict.get("class_name") == "GetItem":
              config_dict["module"] = None
              config_dict["class_name"] = "GetItem"
              config_dict["registered_name"] = "GetItem"
 
+        # Recursive walk
         for key, value in config_dict.items():
             patch_model_config(value)
+            
     elif isinstance(config_dict, list):
         for item in config_dict:
             patch_model_config(item)
+            
     return config_dict
 
 @functools.lru_cache(maxsize=5)
