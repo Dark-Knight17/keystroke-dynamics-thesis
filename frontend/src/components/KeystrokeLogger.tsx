@@ -118,7 +118,6 @@ const KeystrokeLogger: React.FC<KeystrokeLoggerProps> = ({ sessionId, onKeystrok
   const runAuthVerification = useCallback(async () => {
     const buffer = authBuffer.current;
     if (buffer.length < 10) {
-      setAuthStatus(prev => ({ ...prev, verdict: 'insufficient_data' }));
       return;
     }
 
