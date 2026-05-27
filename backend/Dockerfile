@@ -1,5 +1,5 @@
-# Use the full Python 3.13 image (not slim) for maximum library compatibility
-FROM python:3.13
+# Use the full Python 3.12 image to allow NumPy 1.x (Python 3.13 forces NumPy 2.x)
+FROM python:3.12
 
 # Set environment variables
 ENV PYTHONDONTWRITEBYTECODE=1 \
