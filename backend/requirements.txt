@@ -5,7 +5,7 @@ python-dotenv
 sqlalchemy
 pydantic
 slowapi
-psycopg2-binary
+psycopg2
 passlib[bcrypt]
 bcrypt
 pandas
