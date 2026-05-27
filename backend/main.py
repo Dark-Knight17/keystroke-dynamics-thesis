@@ -18,15 +18,19 @@ from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
 import csv
 import io
-from datetime import datetime, timezone
-from auth_model import predict as auth_predict
-
-import numpy
-import tensorflow as tf
 
 import models, database
 
+# Load environment variables
 load_dotenv()
+
+# Initialize Database Tables BEFORE loading AI engines to prevent library conflicts
+models.Base.metadata.create_all(bind=database.engine)
+
+# Load AI engines deferred to isolate them from database driver initialization
+import numpy
+import tensorflow as tf
+from auth_model import predict as auth_predict
 
 # Rate limiter setup
 limiter = Limiter(key_func=get_remote_address)
@@ -47,57 +51,6 @@ app.add_middleware(
 pwd_context = CryptContext(schemes=["pbkdf2_sha256"], deprecated="auto")
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 120
-
-# Pydantic Schemas
-class UserCreate(BaseModel):
-    matric_number: str
-    password: str
-    physical_keyboard_type: str
-    keyboard_layout: Optional[str] = None
-    device_type: Optional[str] = None
-    os: Optional[str] = None
-   
-
-class UserLogin(BaseModel):
-    matric_number: str
-    password: str
-
-class Token(BaseModel):
-    access_token: str
-    token_type: str
-
-class KeystrokeEventCreate(BaseModel):
-    key: str
-    physical_code: Optional[str] = None
-    event_type: str
-    timestamp: float
-    cursor_position: int
-    text_length: int
-    is_auto_repeat: bool
-    is_modifier: bool = False
-    event_sequence: int
-
-class SyncInfo(BaseModel):
-    perf_now: float
-    date_now: float
-
-class KeystrokeBatch(BaseModel):
-    session_id: str
-    batch_id: str
-    events: List[KeystrokeEventCreate]
-    sync: Optional[SyncInfo] = None
-
-class SessionStart(BaseModel):
-    task_id: int
-    device_type: str
-    keyboard_layout: str
-    os: str
-
-class SessionComplete(BaseModel):
-    final_editor_text: str
-
-# Create tables
-models.Base.metadata.create_all(bind=database.engine)
 
 # Helper functions
 SECRET_PEPPER = os.getenv("SECRET_PEPPER")
