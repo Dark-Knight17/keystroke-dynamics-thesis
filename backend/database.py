@@ -8,6 +8,14 @@ load_dotenv()
 
 SQLALCHEMY_DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://postgres:postgres@localhost/keystroke_db")
 
+# Diagnostic: Print DB Host (safely)
+try:
+    from urllib.parse import urlparse
+    parsed = urlparse(SQLALCHEMY_DATABASE_URL)
+    print(f"DATABASE DIAGNOSTIC - Connecting to host: {parsed.hostname}")
+except Exception as e:
+    print(f"DATABASE DIAGNOSTIC - Could not parse URL: {str(e)}")
+
 engine = create_engine(
     SQLALCHEMY_DATABASE_URL,
     pool_pre_ping=True,
