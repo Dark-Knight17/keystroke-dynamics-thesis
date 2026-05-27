@@ -2,8 +2,6 @@ import os
 import functools
 import numpy as np
 import tensorflow as tf
-import zipfile
-import tempfile
 from pathlib import Path
 
 # Normalization statistics (Hardcoded from training results)
@@ -116,64 +114,18 @@ class GetItem(tf.keras.layers.Layer):
 MAX_TIMESTEPS = 300
 MIN_KEYDOWN_EVENTS = 10
 
-def build_transformer_auth_model():
-    """
-    Manually reconstructs the Transformer architecture in code.
-    This ensures cross-version compatibility between Keras 2 and 3.
-    """
-    # 1. Inputs
-    seq_input = tf.keras.Input(shape=(300, 3), name='seq_input')
-    mask_input = tf.keras.Input(shape=(300,), dtype='bool', name='mask_input')
-    
-    # 2. Projection
-    x = tf.keras.layers.Dense(64, activation='linear', name='input_projection')(seq_input)
-    
-    # 3. CLS Token and Position
-    x = CLSTokenAndPosition(seq_len=301, d_model=64, dropout_rate=0.1, name='cls_and_position')(x)
-    
-    # 4. Mask Formatting
-    formatted_mask = FormatAttentionMask(name='mask_formatter')(mask_input)
-    
-    # 5. Transformer Blocks
-    x = TransformerBlock(d_model=64, num_heads=4, dff=128, dropout_rate=0.1, name='transformer_block_0')(x, attention_mask=formatted_mask)
-    x = TransformerBlock(d_model=64, num_heads=4, dff=128, dropout_rate=0.1, name='transformer_block_1')(x, attention_mask=formatted_mask)
-    
-    # 6. Global Pooling (Extract CLS token)
-    x = GetItem(name='get_item')(x)
-    
-    # 7. Final Classification Head
-    x = tf.keras.layers.LayerNormalization(epsilon=1e-6, name='cls_norm')(x)
-    x = tf.keras.layers.Dense(32, activation='relu', name='cls_dense')(x)
-    x = tf.keras.layers.Dropout(0.3, name='cls_dropout')(x)
-    output = tf.keras.layers.Dense(1, activation='sigmoid', name='output')(x)
-    
-    return tf.keras.Model(inputs=[seq_input, mask_input], outputs=output)
-
 @functools.lru_cache(maxsize=5)
 def get_model(participant_id: str):
     """
-    Loads a model by building the architecture in code and loading ONLY the weights.
-    This bypasses all JSON serialization incompatibilities between Keras versions.
+    Loads a Transformer model for a specific participant from the disk.
+    Standard Keras 3 loading for GCP environment.
     """
     model_path = Path(__file__).parent / "models" / f"transformer_{participant_id}.keras"
     if not model_path.exists():
         raise FileNotFoundError(f"Model for participant {participant_id} not found at {model_path}")
     
-    # 1. Build the fresh architecture
-    model = build_transformer_auth_model()
-    
-    # 2. Extract weights from the .keras ZIP archive
-    with tempfile.TemporaryDirectory() as tmpdir:
-        with zipfile.ZipFile(model_path, 'r') as zip_ref:
-            # .keras files store weights in model.weights.h5
-            zip_ref.extract('model.weights.h5', path=tmpdir)
-        
-        weights_path = Path(tmpdir) / 'model.weights.h5'
-        
-        # 3. Load the identical learned weights
-        model.load_weights(str(weights_path))
-    
-    return model
+    # Simple, modern Keras 3 loading
+    return tf.keras.models.load_model(str(model_path))
 
 def preprocess_events(events: list[dict]) -> tuple[np.ndarray, np.ndarray]:
     """
