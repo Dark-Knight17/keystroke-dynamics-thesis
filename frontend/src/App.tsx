@@ -35,6 +35,19 @@ const App: React.FC = () => {
   const [isSessionStarting, setIsSessionStarting] = useState(false);
   const [isSessionEnding, setIsSessionEnding] = useState(false);
   const [expandedDays, setExpandedDays] = useState<Set<string>>(new Set(['Day 1']));
+  const [showReAuthModal, setShowReAuthModal] = useState(false);
+
+  useEffect(() => {
+    const handleUnauthorized = () => {
+      // Only show modal if we were already logged in to avoid double screens during initial auth
+      if (userId) {
+        setShowReAuthModal(true);
+      }
+    };
+
+    window.addEventListener('api-unauthorized', handleUnauthorized);
+    return () => window.removeEventListener('api-unauthorized', handleUnauthorized);
+  }, [userId]);
 
   useEffect(() => {
     const checkAuth = async () => {
@@ -353,6 +366,29 @@ const App: React.FC = () => {
           Logout from session
         </button>
       </footer>
+
+      {showReAuthModal && (
+        <div className="modal-overlay">
+          <div className="modal-content" style={{ maxWidth: '400px', textAlign: 'center' }}>
+            <h2>Session Expired</h2>
+            <p>Please sign in again to continue your research session without losing progress.</p>
+            <Auth onLogin={() => {
+              setShowReAuthModal(false);
+              fetchData();
+            }} />
+            <button 
+              className="btn btn-link" 
+              onClick={() => {
+                setShowReAuthModal(false);
+                handleLogout();
+              }}
+              style={{ marginTop: '1rem' }}
+            >
+              Logout completely
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

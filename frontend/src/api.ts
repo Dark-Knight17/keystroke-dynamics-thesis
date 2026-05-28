@@ -13,4 +13,16 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
+api.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (error.response?.status === 401) {
+      // Dispatch a custom event so the UI can show a re-auth modal
+      // instead of a hard redirect, preserving the user's flow.
+      window.dispatchEvent(new CustomEvent('api-unauthorized'));
+    }
+    return Promise.reject(error);
+  }
+);
+
 export default api;

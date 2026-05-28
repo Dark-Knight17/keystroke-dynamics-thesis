@@ -3,6 +3,8 @@ import hashlib
 import hmac
 import jwt
 import os
+import logging
+import time
 from dotenv import load_dotenv
 from typing import List, Optional
 from datetime import datetime, timedelta, timezone
@@ -10,7 +12,7 @@ from fastapi import FastAPI, Depends, HTTPException, status, Response, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from passlib.context import CryptContext
 from pydantic import BaseModel
 from slowapi import Limiter, _rate_limit_exceeded_handler
@@ -24,10 +26,33 @@ from auth_model import predict as auth_predict
 import numpy
 import tensorflow as tf
 
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+    handlers=[
+        logging.FileHandler("backend.log"),
+        logging.StreamHandler()
+    ]
+)
+logger = logging.getLogger("backend")
+
 import models, database
 
 load_dotenv()
 
+# Initialize Database Tables
+try:
+    models.Base.metadata.create_all(bind=database.engine)
+except Exception as e:
+    logger.critical(f"Database initialization failed: {e}")
+
+# ... (rest of AI imports)
+
+# Load AI engines deferred to isolate them from database driver initialization
+import numpy
+import tensorflow as tf
+from auth_model import predict as auth_predict
 # Rate limiter setup
 limiter = Limiter(key_func=get_remote_address)
 app = FastAPI(title="Keystroke Dynamics Platform")
@@ -96,10 +121,26 @@ class SessionStart(BaseModel):
 class SessionComplete(BaseModel):
     final_editor_text: str
 
-# Create tables
-models.Base.metadata.create_all(bind=database.engine)
+# Global Exception Handlers
+@app.exception_handler(SQLAlchemyError)
+async def sqlalchemy_exception_handler(request: Request, exc: SQLAlchemyError):
+    logger.error(f"Database Error: {str(exc)}")
+    return Response(
+        content='{"detail": "A database error occurred. The operation has been logged."}',
+        status_code=500,
+        media_type="application/json"
+    )
 
-# Helper functions
+@app.exception_handler(Exception)
+async def generic_exception_handler(request: Request, exc: Exception):
+    logger.error(f"Unhandled Exception: {str(exc)}", exc_info=True)
+    return Response(
+        content='{"detail": "An unexpected error occurred. Please try again later."}',
+        status_code=500,
+        media_type="application/json"
+    )
+
+# ... (rest of helper functions)
 SECRET_PEPPER = os.getenv("SECRET_PEPPER")
 JWT_SECRET = os.getenv("JWT_SECRET")
 
@@ -353,6 +394,7 @@ def upload_keystrokes(
 ):
     # Enforce strict maximum payload size
     if len(batch.events) > 200:
+        logger.warning(f"Batch size limit exceeded: {len(batch.events)} events from user {current_user.user_id}")
         raise HTTPException(status_code=400, detail="Batch size exceeds maximum allowed (200 events).")
 
     # Verify session belongs to user
@@ -363,6 +405,7 @@ def upload_keystrokes(
     ).first()
 
     if not db_session:
+        logger.error(f"Unauthorized batch upload attempt for session {session_id} by user {current_user.user_id}")
         raise HTTPException(status_code=404, detail="Session not found or unauthorized")
 
     # Update epoch_anchor if sync is provided
@@ -375,6 +418,18 @@ def upload_keystrokes(
     ).first()
     if existing_batch:
         return {"status": "skipped", "message": "Batch already processed", "count": 0}
+
+    # Sequence Gap Detection
+    last_event = db.query(models.KeystrokeEvent).filter(
+        models.KeystrokeEvent.session_id == session_id
+    ).order_by(models.KeystrokeEvent.event_sequence.desc()).first()
+    
+    expected_seq = (last_event.event_sequence + 1) if last_event else 1
+    incoming_first_seq = batch.events[0].event_sequence
+    
+    if incoming_first_seq > expected_seq:
+        logger.warning(f"Data Gap Detected in Session {session_id}: Expected {expected_seq}, got {incoming_first_seq}")
+        db_session.is_fragmented = True
 
     events = []
     received_at = datetime.now(timezone.utc)
@@ -542,15 +597,25 @@ def verify_authentication(
     
     participant_id = db_session.participant_id
     
+    start_time = time.perf_counter()
     try:
         result = auth_predict(
             participant_id=str(participant_id),
             events=[e.model_dump() for e in request.events]
         )
+        latency_ms = (time.perf_counter() - start_time) * 1000
+        
+        # Store latency for FYP performance reporting
+        db_session.last_inference_ms = latency_ms
+        db.commit()
+        
+        logger.info(f"Inference complete for session {session_id}. Latency: {latency_ms:.2f}ms")
+        
     except FileNotFoundError:
+        logger.error(f"Model not found for participant {participant_id}")
         raise HTTPException(status_code=404, detail="Authentication model not found for this participant")
     except Exception as e:
-        print(f"Authentication Service Error: {str(e)}")
+        logger.error(f"Authentication Service Error: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail="Authentication service error")
     
     return {
@@ -559,7 +624,8 @@ def verify_authentication(
         "score": result.get("score"),
         "verdict": result.get("verdict"),
         "keystrokes": result.get("keystrokes"),
-        "timestamp": datetime.now(timezone.utc).isoformat()
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "latency_ms": latency_ms
     }
 
 @app.get("/export/sessions")

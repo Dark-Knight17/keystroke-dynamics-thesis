@@ -40,6 +40,8 @@ class Session(Base):
     total_keystrokes = Column(Integer, default=0)
     epoch_anchor = Column(BigInteger)
     final_editor_text = Column(Text, nullable=True)
+    is_fragmented = Column(Boolean, default=False) # Flag for missing event sequences
+    last_inference_ms = Column(Float, nullable=True) # Performance metric for FYP reporting
 
 class KeystrokeEvent(Base):
     __tablename__ = "keystroke_events"

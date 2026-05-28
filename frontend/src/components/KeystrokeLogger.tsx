@@ -47,8 +47,54 @@ const BATCH_SIZE = 50;
 
 const MODIFIER_KEYS = new Set(['Shift', 'Control', 'Alt', 'Meta', 'CapsLock']);
 
+// IndexedDB Setup for research data persistence
+const DB_NAME = 'KeystrokeData';
+const STORE_NAME = 'pending_batches';
+
+const initDB = (): Promise<IDBDatabase> => {
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.open(DB_NAME, 1);
+    request.onupgradeneeded = () => {
+      const db = request.result;
+      if (!db.objectStoreNames.contains(STORE_NAME)) {
+        db.createObjectStore(STORE_NAME, { keyPath: 'batch_id' });
+      }
+    };
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  });
+};
+
+const saveBatch = async (batch: KeystrokeBatchPayload) => {
+  const db = await initDB();
+  const tx = db.transaction(STORE_NAME, 'readwrite');
+  tx.objectStore(STORE_NAME).put(batch);
+  return new Promise((resolve, reject) => {
+    tx.oncomplete = () => resolve(true);
+    tx.onerror = () => reject(tx.error);
+  });
+};
+
+const deleteBatch = async (batchId: string) => {
+  const db = await initDB();
+  const tx = db.transaction(STORE_NAME, 'readwrite');
+  tx.objectStore(STORE_NAME).delete(batchId);
+};
+
+const getPendingBatches = async (): Promise<KeystrokeBatchPayload[]> => {
+  const db = await initDB();
+  const tx = db.transaction(STORE_NAME, 'readonly');
+  const store = tx.objectStore(STORE_NAME);
+  const request = store.getAll();
+  return new Promise((resolve, reject) => {
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  });
+};
+
 const KeystrokeLogger: React.FC<KeystrokeLoggerProps> = ({ sessionId, onKeystrokeChange }) => {
   const [code, setCode] = useState('# Start typing your solution here...');
+  const [syncStatus, setSyncStatus] = useState<'synced' | 'syncing' | 'offline'>('synced');
   const [authStatus, setAuthStatus] = useState<{
     verdict: 'genuine' | 'impostor' | 'uncertain' | 'insufficient_data' | 'model_not_found' | 'idle';
     score: number | null;
@@ -107,13 +153,40 @@ const KeystrokeLogger: React.FC<KeystrokeLoggerProps> = ({ sessionId, onKeystrok
     }
 
     try {
+      setSyncStatus('syncing');
+      await saveBatch(payload); // Persist locally first
       await api.post('/keystrokes/batch', payload);
+      await deleteBatch(batchId); // Clear on success
+      setSyncStatus('synced');
     } catch (error) {
       console.error('Failed to upload keystrokes:', error);
-      // Put back at the beginning of buffer
-      eventBuffer.current = [...eventsToUpload, ...eventBuffer.current];
+      setSyncStatus('offline');
+      // Events are safely in IndexedDB, will retry via sync effect
     }
   }, [sessionId]);
+
+  // Background Sync Effect
+  useEffect(() => {
+    const syncPending = async () => {
+      const pending = await getPendingBatches();
+      if (pending.length === 0) return;
+
+      setSyncStatus('syncing');
+      for (const batch of pending) {
+        try {
+          await api.post('/keystrokes/batch', batch);
+          await deleteBatch(batch.batch_id);
+        } catch (err) {
+          setSyncStatus('offline');
+          return; // Stop trying if still offline
+        }
+      }
+      setSyncStatus('synced');
+    };
+
+    const interval = setInterval(syncPending, 10000); // Retry every 10s
+    return () => clearInterval(interval);
+  }, []);
 
   const runAuthVerification = useCallback(async () => {
     const buffer = authBuffer.current;
@@ -285,6 +358,24 @@ const KeystrokeLogger: React.FC<KeystrokeLoggerProps> = ({ sessionId, onKeystrok
               {Math.round(authStatus.score * 100)}% Match
             </div>
           )}
+          <div style={{ 
+            fontSize: '9px', 
+            marginTop: '4px', 
+            padding: '2px 6px', 
+            borderRadius: '4px',
+            backgroundColor: 'rgba(255,255,255,0.5)',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '4px'
+          }}>
+            <span style={{ 
+              width: '6px', 
+              height: '6px', 
+              borderRadius: '50%', 
+              backgroundColor: syncStatus === 'synced' ? '#34a853' : (syncStatus === 'syncing' ? '#fbbc05' : '#ea4335') 
+            }}></span>
+            {syncStatus.toUpperCase()}
+          </div>
         </div>
       )}
       <Editor
